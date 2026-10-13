@@ -59,9 +59,21 @@ async function token(){if(!SES)return null;if(SES.expires_at*1000-Date.now()>600
 async function rest(method,qs,body){const t=await token();const r=await fetch(`${SB_URL}/rest/v1/app_state${qs}`,{method,
  headers:{apikey:SB_KEY,Authorization:'Bearer '+t,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:body&&JSON.stringify(body)});
  if(!r.ok)throw new Error('sync '+r.status);return method==='GET'?r.json():null}
-async function puxa(){if(!SES)return;try{const rows=await rest('GET','?select=data&user_id=eq.'+SES.user.id);
- const rem=rows[0]&&rows[0].data;if(rem&&(rem._t||0)>(S._t||0)){S=rem;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
- else if(S.perfil)await empurra();syncMsg='✓ sincronizado'}catch(e){syncMsg='⚠ offline, salvo no aparelho'}}
+// Junta dois estados sem perder registros: listas somam (sem repetir), configurações vêm do mais recente
+function junta(a,b){if(!a||!a.perfil)return b;if(!b||!b.perfil)return a;
+ const [novo,velho]=(a._t||0)>=(b._t||0)?[a,b]:[b,a],r={...velho,...novo};
+ const uniao=(k,id)=>{const m=new Map();[...(velho[k]||[]),...(novo[k]||[])].forEach(x=>m.set(id(x),x));return[...m.values()]};
+ r.refeicoes=uniao('refeicoes',x=>x.id);r.treinos=uniao('treinos',x=>x.id);r.jejuns=uniao('jejuns',x=>x.ini);
+ r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);
+ r.agua={...velho.agua};Object.entries(novo.agua||{}).forEach(([d,v])=>r.agua[d]=Math.max(v,r.agua[d]||0));
+ r.checks={...velho.checks};Object.entries(novo.checks||{}).forEach(([d,c])=>r.checks[d]={...(r.checks[d]||{}),...c});
+ ['cardapio','plano','compras'].forEach(k=>{if(!Object.keys(novo[k]||{}).length)r[k]=velho[k]});
+ r._t=Math.max(a._t||0,b._t||0);return r}
+// mesclar=true só no login: junta o que estava neste aparelho com a conta. No resto, vale a versão mais recente.
+async function puxa(mesclar){if(!SES)return;try{const rows=await rest('GET','?select=data&user_id=eq.'+SES.user.id);
+ const rem=rows[0]&&rows[0].data;
+ S=mesclar?junta(S,rem):(rem&&(rem._t||0)>(S._t||0)?rem:S);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+ if(S.perfil&&JSON.stringify(S)!==JSON.stringify(rem))await empurra();syncMsg='✓ sincronizado'}catch(e){syncMsg='⚠ offline, salvo no aparelho'}}
 async function empurra(){await rest('POST','',{user_id:SES.user.id,data:S,updated_at:new Date().toISOString()})}
 let tSync;function agendaSync(){if(!SES)return;clearTimeout(tSync);tSync=setTimeout(async()=>{try{await empurra();syncMsg='✓ sincronizado'}catch(e){syncMsg='⚠ offline, salvo no aparelho'}
  const el=document.getElementById('sync');if(el)el.textContent=syncMsg},800)}
@@ -72,14 +84,34 @@ function login(){$('#nav').innerHTML='';
  $('#app').innerHTML=`<h1>Entrar</h1><div class="card"><div class="mut" style="margin-bottom:10px">Entre para sincronizar seus dados entre celular e computador.</div>
  <label>E-mail<input id="em" type="email" autocomplete="email"></label><label>Senha (mín. 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label>
  <div id="err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div>
- <div class="grid"><button id="entrar">Entrar</button><button class="ghost" id="criar">Criar conta</button></div></div>
+ <div class="grid"><button id="entrar">Entrar</button><button class="ghost" id="criar">Criar conta</button></div>
+ <button class="x" id="esqueci" style="margin-top:10px">Esqueci minha senha</button></div>
  <button class="x" id="semConta">Usar sem conta (só neste aparelho)</button>`;
  const go=async tipo=>{$('#err').textContent='';try{const body={email:$('#em').value.trim(),password:$('#pw').value};
   const j=await auth(tipo==='criar'?'signup':'token?grant_type=password',body);
   if(!j.access_token)throw new Error('Conta criada. Confirme o e-mail e depois toque em Entrar.');
-  salvaSes(j);await puxa();render()}catch(e){$('#err').textContent=e.message}};
+  salvaSes(j);await puxa(true);render()}catch(e){$('#err').textContent=e.message}};
  $('#entrar').onclick=()=>go('entrar');$('#criar').onclick=()=>go('criar');
+ $('#esqueci').onclick=async()=>{const email=$('#em').value.trim(),err=$('#err');
+  if(!email){err.textContent='Digite seu e-mail acima e toque de novo em "Esqueci minha senha".';return}
+  try{await auth('recover',{email});err.style.color='var(--ac)';err.textContent=`Enviamos um link para ${email}. Abra o e-mail (veja o spam) e toque no link para criar uma senha nova.`}
+  catch(e){err.style.color='';err.textContent=/rate|seconds/i.test(e.message)?'Muitos pedidos seguidos. Espere um minuto e tente de novo.':e.message}};
  $('#semConta').onclick=()=>{try{localStorage.setItem(KEY+'-local','1')}catch(e){};render()}}
+// Volta dos links do e-mail (confirmação de conta ou senha nova): o Supabase manda a sessão no # da URL
+async function sessaoDoLink(){const h=new URLSearchParams(location.hash.slice(1));if(!h.get('access_token')&&!h.get('error'))return null;
+ history.replaceState(null,'',location.pathname+location.search);
+ if(h.get('error'))return{erro:h.get('error_code')==='otp_expired'?'Este link expirou ou já foi usado. Peça um novo.':(h.get('error_description')||'Link inválido.').replace(/\+/g,' ')};
+ const at=h.get('access_token'),r=await fetch(`${SB_URL}/auth/v1/user`,{headers:{apikey:SB_KEY,Authorization:'Bearer '+at}});if(!r.ok)return{erro:'Não foi possível validar o link. Peça um novo.'};
+ salvaSes({access_token:at,refresh_token:h.get('refresh_token'),expires_at:+h.get('expires_at')||Date.now()/1000+3600,user:await r.json()});return{tipo:h.get('type')}}
+function novaSenha(){$('#nav').innerHTML='';
+ $('#app').innerHTML=`<h1>Nova senha</h1><div class="card"><div class="mut" style="margin-bottom:10px">Conta: ${esc(SES.user.email)}</div>
+ <label>Nova senha (mín. 6 caracteres)<input id="np1" type="password" autocomplete="new-password"></label><label>Repita a senha<input id="np2" type="password" autocomplete="new-password"></label>
+ <div id="err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div><button id="salvaSenha">Salvar senha</button></div>`;
+ $('#salvaSenha').onclick=async()=>{const a=$('#np1').value,b=$('#np2').value;if(a.length<6)return $('#err').textContent='A senha precisa ter pelo menos 6 caracteres.';
+  if(a!==b)return $('#err').textContent='As senhas não são iguais.';
+  const r=await fetch(`${SB_URL}/auth/v1/user`,{method:'PUT',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify({password:a})});
+  if(!r.ok){const j=await r.json().catch(()=>({}));return $('#err').textContent=/different/i.test(j.msg||'')?'Use uma senha diferente da anterior.':(j.msg||'Não foi possível salvar.')}
+  alert('Senha alterada!');await puxa(true);render()}}
 const modoLocal=()=>{try{return localStorage.getItem(KEY+'-local')==='1'}catch(e){return false}};
 const dataLocal=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const hoje=()=>dataLocal(new Date());
@@ -365,7 +397,8 @@ function bind(){
   S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';render()};
  if($('#logar'))$('#logar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()};
 }
-render();if(SES)puxa().then(render);
+sessaoDoLink().then(async r=>{if(r&&r.tipo==='recovery')return novaSenha();
+ render();if(r&&r.erro&&$('#err'))$('#err').textContent=r.erro;if(SES){await puxa(!!(r&&r.tipo));render()}}).catch(()=>render());
 </script>
 </body>
 </html>
