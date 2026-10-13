@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dieta e Treino">
 <meta name="theme-color" content="#1f8a5b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>Dieta e Treino</title>
 <style>
 :root{--bg:#f6f7f5;--card:#fff;--tx:#1d2420;--mut:#6b746e;--ac:#1f8a5b;--warn:#c4572e;--ln:#e3e6e2}
@@ -25,7 +28,7 @@ button.ghost{background:transparent;color:var(--ac);border:1px solid var(--ac)}b
 .bar{height:8px;background:var(--ln);border-radius:4px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--ac)}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--ln)}.row:last-child{border:0}
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--ln);display:flex;justify-content:center}
-nav button{flex:1;max-width:130px;background:none;color:var(--mut);border-radius:0;padding:12px 4px;font-size:13px}nav button.on{color:var(--ac)}
+nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius:0;padding:12px 4px;font-size:13px}nav button.on{color:var(--ac)}
 .chk{display:flex;gap:8px;align-items:center;padding:5px 0}.chk input{width:auto;margin:0}
 #res{max-height:180px;overflow:auto}svg{width:100%;height:auto}
 </style>
@@ -75,13 +78,17 @@ function login(){$('#nav').innerHTML='';
  $('#entrar').onclick=()=>go('entrar');$('#criar').onclick=()=>go('criar');
  $('#semConta').onclick=()=>{try{localStorage.setItem(KEY+'-local','1')}catch(e){};render()}}
 const modoLocal=()=>{try{return localStorage.getItem(KEY+'-local')==='1'}catch(e){return false}};
-const hoje=()=>new Date().toISOString().slice(0,10);
+const dataLocal=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const hoje=()=>dataLocal(new Date());
 
 const PLANOS={eq:{n:"Equilibrado",p:1.6,regras:["4 refeições","Metade do prato com vegetais","Ultraprocessados no máx. 1x"]},
  hp:{n:"Alto em proteína",p:2.0,regras:["Proteína em todas as refeições","Carboidrato até 2 h antes do treino","Proteína no pós-treino"]},
  lc:{n:"Low carb moderado",p:1.8,regras:["Sem açúcar e farinha branca","Carboidrato só no pré/pós-treino","Carboidrato ≤ 100 g"]}};
 const MET={"Academia|moderada":5,"Academia|intensa":6,"Crossfit|intensa":8,"Crossfit|moderada":6,"Corrida|leve (8 km/h)":8,"Corrida|moderada (10 km/h)":9.8,
- "Corrida|forte (12 km/h)":11.8,"Lutas|técnico":5.3,"Lutas|sparring":10.3};
+ "Corrida|forte (12 km/h)":11.8,"Lutas|técnico":5.3,"Lutas|sparring":10.3,
+ "Natação|leve":6,"Natação|moderada":8.3,"Natação|intensa":9.8,"Ciclismo|leve (até 16 km/h)":4,"Ciclismo|moderado (16–19 km/h)":6.8,
+ "Ciclismo|intenso (20–22 km/h)":8,"Ciclismo|bike ergométrica":6.8,"Funcional|moderado":4.3,"Funcional|intenso":8};
+const MODALIDADES=[...new Set(Object.keys(MET).map(k=>k.split('|')[0]))];
 const ATIV={"1.2":"Sedentário","1.375":"Leve","1.55":"Moderado","1.725":"Intenso"};
 
 // ---- cálculos ----
@@ -107,7 +114,7 @@ function macros(d){const kg=pesoAtual(),pl=S.perfil.plano,kcal=meta()+dia(d).gas
  if(pl==='lc'){extra=corridaLonga(d)?Math.round(kg):0;carb=100+extra;gord=(kcal-prot*4-carb*4)/9}
  else{gord=kcal*(pl==='eq'?0.275:0.25)/9;carb=(kcal-prot*4-gord*9)/4}
  return {kcal,prot,carb:Math.max(0,Math.round(carb)),gord:Math.max(0,Math.round(gord)),extra}}
-function sequencia(){let n=0,d=new Date();for(;;){const k=d.toISOString().slice(0,10),x=dia(k);
+function sequencia(){let n=0,d=new Date();for(;;){const k=dataLocal(d),x=dia(k);
  if(x.r.length&&x.t.length)n++;else if(k!==hoje())break;d.setDate(d.getDate()-1);if(n>999)break}return n}
 
 // ---- telas ----
@@ -141,7 +148,8 @@ function painel(){const d=dia(hoje()),m=meta(),saldo=d.kcal-d.gasto,mc=macros(ho
  <div class="card"><h2>Checklist · ${pl.n}</h2>${pl.regras.map((r,i)=>S.perfil.plano==='lc'&&i===2
   ?`<label class="chk"><input type="checkbox" disabled ${d.r.length&&d.carb<=mc.carb?'checked':''}>Carboidrato ≤ ${mc.carb} g <span class="mut">(hoje ${f(d.carb)} g · automático)</span></label>`
   :`<label class="chk"><input type="checkbox" data-c="${i}" ${ch[i]?'checked':''}>${r}</label>`).join('')}
- <div class="row"><span>💧 Água ${f(agua)} / ${f(aguaMeta)} ml</span><button class="ghost" id="agua">+250 ml</button></div></div>`}
+ <div class="row"><span>💧 Água ${f(agua)} / ${f(aguaMeta)} ml</span><button class="ghost" id="agua">+250 ml</button></div></div>
+ ${cardJejum()}`}
 
 const TIPOS=['Café da manhã','Almoço','Lanche','Jantar'];
 // Refeição sugerida pelo horário; a escolha manual vale até recarregar
@@ -171,6 +179,10 @@ function favoritos(){const cnt={},ult={};S.refeicoes.forEach(r=>{const k=r.nome+
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
 const semAcento=t=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const BUSCA=TACO.map(t=>semAcento(t[0]));
+// Até 50 índices de TACO que contêm todas as palavras; os que começam pela primeira palavra vêm antes
+function buscaAlim(txt){const termos=semAcento(txt).split(/\s+/).filter(Boolean);if(termos.join('').length<2)return[];
+ const ach=[];for(let i=0;i<TACO.length&&ach.length<50;i++)if(termos.every(t=>BUSCA[i].includes(t)))ach.push(i);
+ return ach.sort((a,b)=>(BUSCA[a].startsWith(termos[0])?0:1)-(BUSCA[b].startsWith(termos[0])?0:1))}
 // a = [nome, kcal, prot, carb, gord] por 100 g
 function addAlimento(a,g){if(!a||!g)return;g=+g;
  S.refeicoes.push({id:Date.now()+Math.random(),d:hoje(),tipo:$('#tipo')?$('#tipo').value:'Lanche',nome:a[0],g,
@@ -181,7 +193,7 @@ function treinos(){const t=dia(hoje()).t,dias=['Seg','Ter','Qua','Qui','Sex','S�
  <label>Modalidade e intensidade<select id="mod">${Object.keys(MET).map(k=>`<option value="${k}">${k.replace('|',' · ')}</option>`).join('')}</select></label>
  <label>Duração (min)<input id="dur" type="number" value="60"></label><button id="addT">Registrar</button></div>
  <div class="card"><h2>Hoje</h2>${t.map(x=>`<div class="row"><span>${x.mod.replace('|',' · ')} · ${x.min} min</span><span>${f(x.kcal)} kcal <button class="x" data-delt="${x.id}">✕</button></span></div>`).join('')||'<div class="mut">Nenhum treino hoje.</div>'}</div>
- <div class="card"><h2>Plano semanal</h2>${dias.map((d,i)=>`<label>${d}<select data-pl="${i}"><option value="">Descanso</option>${['Academia','Crossfit','Corrida','Lutas'].map(m=>`<option ${S.plano[i]===m?'selected':''}>${m}</option>`).join('')}</select></label>`).join('')}</div>`}
+ <div class="card"><h2>Plano semanal</h2>${dias.map((d,i)=>`<label>${d}<select data-pl="${i}"><option value="">Descanso</option>${MODALIDADES.map(m=>`<option ${S.plano[i]===m?'selected':''}>${m}</option>`).join('')}</select></label>`).join('')}</div>`}
 
 function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.length?tr[tr.length-1].t:p.peso;
  let prev='Registre peso por 1–2 semanas para ver a previsão.';
@@ -193,25 +205,141 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  <div class="card"><h2>Perfil</h2><label>Plano<select id="trocaPlano">${Object.entries(PLANOS).map(([k,v])=>`<option value="${k}" ${k===p.plano?'selected':''}>${v.n}</option>`).join('')}</select></label>
  <button class="ghost" id="reset">Apagar dados e refazer cadastro</button></div>
  <div class="card"><h2>Conta</h2>${SES?`<div class="mut">${SES.user.email} · <span id="sync">${syncMsg}</span></div><button class="ghost" id="sair" style="margin-top:8px">Sair</button>`
- :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>`}
+ :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>
+ ${cardLembretes()}`}
 function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesagens.</div>';
  const W=600,H=180,ks=tr.flatMap(p=>[p.kg,p.t]),mn=Math.min(...ks)-.5,mx=Math.max(...ks)+.5;
  const x=i=>20+i*(W-40)/(tr.length-1),y=v=>H-15-(v-mn)/(mx-mn)*(H-30);
  return `<svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="var(--ac)" stroke-width="2.5" points="${tr.map((p,i)=>x(i)+','+y(p.t)).join(' ')}"/>
  ${tr.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.kg)}" r="3" fill="var(--mut)"/>`).join('')}</svg>`}
 
-const ABAS={painel:['🏠','Hoje',painel],alimentacao:['🍽️','Comida',alimentacao],treinos:['🏋️','Treinos',treinos],evolucao:['📈','Evolução',evolucao]};
-function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadastro();
+// ---- v2: campos novos com padrão para contas antigas ----
+function normaliza(){S.cardapio=S.cardapio||{};S.compras=S.compras||{};S.jejuns=S.jejuns||[];if(S.jejum===undefined)S.jejum=null;
+ S.lembretes=S.lembretes||{agua:false,refeicoes:false,jejum:false}}
+
+// ---- jejum intermitente ----
+const PROTOCOLOS=[12,14,16,18,20];
+const hm=ms=>{const m=Math.max(0,Math.floor(ms/6e4));return`${Math.floor(m/60)}h${String(m%60).padStart(2,'0')}`};
+function cardJejum(){const j=S.jejum;
+ if(!j)return`<div class="card"><h2>⏱️ Jejum</h2><div class="grid"><select id="jProt">${PROTOCOLOS.map(h=>`<option value="${h}" ${h===(S.jejumPadrao||16)?'selected':''}>${h}:${24-h}</option>`).join('')}</select>
+  <button id="jIni">Iniciar jejum</button></div>${S.jejuns.length?`<div class="mut" style="margin-top:8px">Último: ${hm(S.jejuns[S.jejuns.length-1].fim-S.jejuns[S.jejuns.length-1].ini)} de ${S.jejuns[S.jejuns.length-1].horas}h</div>`:''}</div>`;
+ const dec=Date.now()-j.ini,meta=j.horas*36e5,fim=new Date(j.ini+meta);
+ return`<div class="card"><h2>⏱️ Jejum ${j.horas}:${24-j.horas}</h2><div class="big" id="jTempo">${hm(dec)}</div>
+  <div class="bar"><i id="jBar" style="width:${pct(dec,meta)}%"></i></div>
+  <div class="mut" id="jInfo">${dec>=meta?'✅ Meta atingida! Pode encerrar.':`Termina às ${fim.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · faltam ${hm(meta-dec)}`}</div>
+  <button class="ghost" id="jFim" style="margin-top:8px">Encerrar jejum</button></div>`}
+setInterval(()=>{const j=S.jejum,el=document.getElementById('jTempo');if(!j||!el)return;const dec=Date.now()-j.ini,meta=j.horas*36e5;
+ el.textContent=hm(dec);document.getElementById('jBar').style.width=pct(dec,meta)+'%';
+ if(dec>=meta)document.getElementById('jInfo').textContent='✅ Meta atingida! Pode encerrar.'},30000);
+
+// ---- cardápio semanal e lista de compras ----
+const DIAS=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+const diaSemana=()=>(new Date().getDay()+6)%7;
+let diaCard=diaSemana(),refCard='Café da manhã';
+const achaAlim=n=>TACO.find(t=>t[0]===n);
+// Modelos por plano: duas variações que se alternam na semana; ajuste as gramas à vontade
+const MODELOS={
+ eq:[{"Café da manhã":[["Pão, trigo, francês",50],["Ovo, de galinha, inteiro, cozido/10minutos",50],["Mamão, Papaia, cru",150],["Café, infusão 10%",100]],
+   "Almoço":[["Arroz, tipo 1, cozido",120],["Feijão, carioca, cozido",100],["Frango, peito, sem pele, grelhado",120],["Alface, crespa, crua",40],["Tomate, com semente, cru",60],["Azeite de oliva",5]],
+   "Lanche":[["Iogurte, natural",170],["Banana, prata, crua",80],["Aveia em flocos",20]],
+   "Jantar":[["Batata, doce, cozida",120],["Carne, bovina, patinho, sem gordura, grelhado",100],["Brócolis, cozido",100],["Azeite de oliva",5]]},
+  {"Café da manhã":[["Pão, trigo, forma, integral",50],["Queijo, minas, frescal",30],["Maçã, Fuji, com casca, crua",130],["Café, infusão 10%",100]],
+   "Almoço":[["Arroz, integral, cozido",120],["Feijão, carioca, cozido",100],["Carne, bovina, patinho, sem gordura, grelhado",110],["Cenoura, cozida",60],["Couve",40],["Azeite de oliva",5]],
+   "Lanche":[["Iogurte, natural",170],["Mamão, Papaia, cru",150],["Castanha-do-Brasil, crua",10]],
+   "Jantar":[["Mandioca, cozida",120],["Frango, peito, sem pele, grelhado",120],["Abobrinha, cozido(a)",100],["Azeite de oliva",5]]}],
+ hp:[{"Café da manhã":[["Ovo, de galinha, inteiro, cozido/10minutos",100],["Pão, trigo, forma, integral",50],["Queijo, minas, frescal",30],["Café, infusão 10%",100]],
+   "Almoço":[["Arroz, tipo 1, cozido",120],["Feijão, carioca, cozido",100],["Frango, peito, sem pele, grelhado",170],["Alface, crespa, crua",40],["Tomate, com semente, cru",60]],
+   "Lanche":[["Iogurte, natural, desnatado",200],["Aveia em flocos",30],["Banana, prata, crua",80]],
+   "Jantar":[["Batata, doce, cozida",120],["Carne, bovina, patinho, sem gordura, grelhado",160],["Brócolis, cozido",100],["Azeite de oliva",5]]},
+  {"Café da manhã":[["Ovo, de galinha, inteiro, cozido/10minutos",100],["Iogurte, natural, desnatado",170],["Mamão, Papaia, cru",150]],
+   "Almoço":[["Arroz, integral, cozido",120],["Feijão, carioca, cozido",100],["Carne, bovina, patinho, sem gordura, grelhado",160],["Couve",50]],
+   "Lanche":[["Atum em conserva light",80],["Pão, trigo, forma, integral",50]],
+   "Jantar":[["Mandioca, cozida",100],["Frango, peito, sem pele, grelhado",170],["Abobrinha, cozido(a)",100],["Azeite de oliva",5]]}],
+ lc:[{"Café da manhã":[["Ovo, de galinha, inteiro, cozido/10minutos",150],["Queijo, minas, frescal",40],["Café, infusão 10%",100]],
+   "Almoço":[["Frango, peito, sem pele, grelhado",150],["Feijão, carioca, cozido",80],["Alface, crespa, crua",50],["Tomate, com semente, cru",80],["Azeite, de oliva, extra virgem",10]],
+   "Lanche":[["Iogurte, natural",170],["Castanha-do-Brasil, crua",15]],
+   "Jantar":[["Carne, bovina, patinho, sem gordura, grelhado",150],["Brócolis, cozido",120],["Abacate",80]]},
+  {"Café da manhã":[["Ovo, de galinha, inteiro, cozido/10minutos",100],["Abacate",80],["Café, infusão 10%",100]],
+   "Almoço":[["Carne, bovina, patinho, sem gordura, grelhado",150],["Abobrinha, cozido(a)",120],["Couve",60],["Azeite, de oliva, extra virgem",10]],
+   "Lanche":[["Amendoim, torrado, salgado",25],["Queijo, minas, frescal",40]],
+   "Jantar":[["Frango, peito, sem pele, grelhado",150],["Brócolis, cozido",120],["Tomate, com semente, cru",80],["Azeite, de oliva, extra virgem",10]]}]};
+const totais=itens=>itens.reduce((s,[n,g])=>{const a=achaAlim(n)||[n,0,0,0,0];s.kcal+=a[1]*g/100;s.prot+=a[2]*g/100;s.carb+=a[3]*g/100;s.gord+=a[4]*g/100;return s},{kcal:0,prot:0,carb:0,gord:0});
+const itensDia=i=>Object.values(S.cardapio[i]||{}).flat();
+function listaCompras(){const soma={};for(let i=0;i<7;i++)itensDia(i).forEach(([n,g])=>soma[n]=(soma[n]||0)+g);
+ return Object.entries(soma).sort((a,b)=>a[0].localeCompare(b[0]))}
+function cardapio(){const c=S.cardapio[diaCard]||{},t=totais(itensDia(diaCard)),mc=macros(hoje()),lista=listaCompras();
+ return`<h1>Cardápio da semana</h1>
+ <div class="card"><div style="display:flex;gap:6px;flex-wrap:wrap">${DIAS.map((d,i)=>`<button class="${i===diaCard?'':'ghost'}" data-dc="${i}" style="padding:7px 10px">${d}${i===diaSemana()?' •':''}</button>`).join('')}</div>
+  <div class="mut" style="margin-top:10px">${DIAS[diaCard]}: <b>${f(t.kcal)} kcal</b> (meta ${f(meta())}) · ${pcg(t.prot,t.carb,t.gord)}</div></div>
+ ${TIPOS.map(r=>{const it=c[r]||[];return`<div class="card"><div class="row"><h2 style="margin:0">${r}</h2><span>${f(totais(it).kcal)} kcal</span></div>
+  ${it.map(([n,g],k)=>`<div class="row"><span>${esc(n)}<br><span class="mut">${g} g</span></span><span style="white-space:nowrap">${f((achaAlim(n)||[0,0])[1]*g/100)} kcal <button class="x" data-crm="${r}|${k}">✕</button></span></div>`).join('')||'<div class="mut">Vazio</div>'}
+  <button class="ghost" data-cadd="${r}" style="margin-top:8px;padding:6px 10px">+ alimento</button></div>`}).join('')}
+ <div class="card" id="cBuscaCard" style="display:none"><h2>Adicionar em <span id="cRef"></span></h2><input id="cBusca" placeholder="buscar alimento" autocomplete="off"><div id="cRes"></div></div>
+ <div class="card"><h2>Ações</h2><div class="grid">
+  <button class="ghost" id="cSug">Sugerir semana (${PLANOS[S.perfil.plano].n})</button><button class="ghost" id="cCopia">Copiar ${DIAS[diaCard]} para todos</button>
+  <button id="cReg">Registrar ${DIAS[diaCard]} no diário de hoje</button><button class="ghost" id="cLimpa">Limpar ${DIAS[diaCard]}</button></div></div>
+ <div class="card"><div class="row"><h2 style="margin:0">🛒 Lista de compras da semana</h2>${lista.length?'<button class="x" id="cDesm">desmarcar tudo</button>':''}</div>
+  ${lista.map(([n,g])=>`<label class="chk"><input type="checkbox" data-cmp="${esc(n)}" ${S.compras[n]?'checked':''}><span>${esc(n)} <span class="mut">— ${g>=1000?(g/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})+' kg':f(g)+' g'}</span></span></label>`).join('')||'<div class="mut">Monte o cardápio para gerar a lista.</div>'}</div>`}
+function bindCardapio(){
+ document.querySelectorAll('[data-dc]').forEach(b=>b.onclick=()=>{diaCard=+b.dataset.dc;render()});
+ document.querySelectorAll('[data-crm]').forEach(b=>b.onclick=()=>{const[r,k]=b.dataset.crm.split('|');S.cardapio[diaCard][r].splice(+k,1);save();render()});
+ document.querySelectorAll('[data-cadd]').forEach(b=>b.onclick=()=>{refCard=b.dataset.cadd;$('#cBuscaCard').style.display='';$('#cRef').textContent=`${refCard} · ${DIAS[diaCard]}`;
+  $('#cBuscaCard').scrollIntoView({behavior:'smooth'});$('#cBusca').focus()});
+ if($('#cBusca'))$('#cBusca').oninput=e=>{const ach=buscaAlim(e.target.value);
+  $('#cRes').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[1]} kcal /100 g</span></span><span style="display:flex;gap:6px"><input type="number" value="100" style="width:70px" data-cg="${i}"><button data-cput="${i}">+</button></span></div>`}).join('');
+  const put=i=>{const g=+document.querySelector(`[data-cg="${i}"]`).value;if(!g)return;const d=S.cardapio[diaCard]=S.cardapio[diaCard]||{};(d[refCard]=d[refCard]||[]).push([TACO[i][0],g]);save();render()};
+  document.querySelectorAll('[data-cput]').forEach(b=>b.onclick=()=>put(b.dataset.cput));
+  document.querySelectorAll('[data-cg]').forEach(inp=>inp.onkeydown=ev=>{if(ev.key==='Enter')put(inp.dataset.cg)})};
+ if($('#cSug'))$('#cSug').onclick=()=>{if(Object.keys(S.cardapio).length&&!confirm('Substituir o cardápio da semana inteira pela sugestão?'))return;
+  const m=MODELOS[S.perfil.plano];for(let i=0;i<7;i++)S.cardapio[i]=JSON.parse(JSON.stringify(m[i%2]));
+  // ajusta as porções para a meta de calorias do perfil
+  for(let i=0;i<7;i++){const k=meta()/Math.max(1,totais(itensDia(i)).kcal);Object.values(S.cardapio[i]).forEach(it=>it.forEach(x=>x[1]=Math.max(5,Math.round(x[1]*k/5)*5)))}
+  S.compras={};save();render()};
+ if($('#cCopia'))$('#cCopia').onclick=()=>{if(!confirm(`Copiar ${DIAS[diaCard]} para todos os dias?`))return;for(let i=0;i<7;i++)if(i!==diaCard)S.cardapio[i]=JSON.parse(JSON.stringify(S.cardapio[diaCard]||{}));save();render()};
+ if($('#cLimpa'))$('#cLimpa').onclick=()=>{S.cardapio[diaCard]={};save();render()};
+ if($('#cReg'))$('#cReg').onclick=()=>{const c=S.cardapio[diaCard]||{};let n=0;
+  TIPOS.forEach(r=>(c[r]||[]).forEach(([nome,g])=>{const a=achaAlim(nome);if(!a)return;n++;
+   S.refeicoes.push({id:Date.now()+Math.random(),d:hoje(),tipo:r,nome,g,kcal:a[1]*g/100,prot:a[2]*g/100,carb:a[3]*g/100,gord:a[4]*g/100})}));
+  if(!n)return alert('Este dia do cardápio está vazio.');save();aba='alimentacao';render()};
+ document.querySelectorAll('[data-cmp]').forEach(c=>c.onchange=()=>{S.compras[c.dataset.cmp]=c.checked;save()});
+ if($('#cDesm'))$('#cDesm').onclick=()=>{S.compras={};save();render()}}
+
+// ---- lembretes (notificações do navegador) ----
+let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').then(r=>swReg=r).catch(()=>{});
+const podeNotificar=()=>'Notification' in window&&Notification.permission==='granted';
+function notifica(titulo,corpo,tag){if(!podeNotificar())return;const o={body:corpo,tag,icon:'icon.svg'};
+ try{swReg?swReg.showNotification(titulo,o):new Notification(titulo,o)}catch(e){}}
+let avisados={};try{avisados=JSON.parse(localStorage.getItem(KEY+'-avisos'))||{}}catch(e){}
+function avisaUmaVez(chave,...a){if(avisados[chave])return;avisados[chave]=1;try{localStorage.setItem(KEY+'-avisos',JSON.stringify(avisados))}catch(e){};notifica(...a)}
+const HORAS_REF={"Café da manhã":9,"Almoço":13,"Lanche":17,"Jantar":21};
+function verificaLembretes(){if(!S||!S.perfil||!S.lembretes)return;const L=S.lembretes,agora=new Date(),h=agora.getHours(),d=hoje();
+ if(L.agua&&h>=9&&h<=21&&h%2===1){const a=S.agua[d]||0,m=Math.round(pesoAtual()*35),esperado=m*(h-7)/15;
+  if(a<esperado)avisaUmaVez(`agua-${d}-${h}`,'💧 Hora de beber água',`Você está em ${f(a)} de ${f(m)} ml hoje.`,'agua')}
+ if(L.refeicoes)Object.entries(HORAS_REF).forEach(([r,hr])=>{if(h===hr&&!dia(d).r.some(x=>x.tipo===r))avisaUmaVez(`ref-${d}-${r}`,`🍽️ ${r}`,`Ainda não registrou o ${r.toLowerCase()} de hoje.`,'ref')});
+ if(L.jejum&&S.jejum&&Date.now()>=S.jejum.ini+S.jejum.horas*36e5)avisaUmaVez(`jejum-${S.jejum.ini}`,'⏱️ Jejum concluído',`Você completou ${S.jejum.horas}h de jejum.`,'jejum')}
+setInterval(verificaLembretes,60000);
+function cardLembretes(){const L=S.lembretes,sup='Notification' in window;
+ return`<div class="card"><h2>🔔 Lembretes</h2>${!sup?'<div class="mut">Este navegador não suporta notificações.</div>':`
+  ${[['agua','Beber água (a cada 2 h, se estiver abaixo do ritmo)'],['refeicoes','Refeição não registrada (9h, 13h, 17h, 21h)'],['jejum','Fim do jejum']].map(([k,t])=>`<label class="chk"><input type="checkbox" data-lb="${k}" ${L[k]?'checked':''}>${t}</label>`).join('')}
+  <div class="mut">${Notification.permission==='denied'?'⚠ Notificações bloqueadas nas configurações do navegador.':'Funcionam com o app aberto ou em segundo plano no aparelho.'}</div>`}</div>`}
+function bindLembretes(){document.querySelectorAll('[data-lb]').forEach(c=>c.onchange=async()=>{
+ if(c.checked&&Notification.permission!=='granted'&&await Notification.requestPermission()!=='granted'){c.checked=false;return render()}
+ S.lembretes[c.dataset.lb]=c.checked;save();if(c.checked)notifica('🔔 Lembretes ativados','Você vai receber avisos deste app.','teste')})}
+
+const ABAS={painel:['🏠','Hoje',painel],alimentacao:['🍽️','Comida',alimentacao],cardapio:['📋','Cardápio',cardapio],treinos:['🏋️','Treinos',treinos],evolucao:['📈','Evolução',evolucao]};
+function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadastro();normaliza();
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=ABAS[aba][2]();bind()}
 function bind(){
- document.querySelectorAll('[data-aba]').forEach(b=>b.onclick=()=>{aba=b.dataset.aba;render()});
+ document.querySelectorAll('[data-aba]').forEach(b=>b.onclick=()=>{aba=b.dataset.aba;render();scrollTo(0,0)});
+ bindCardapio();bindLembretes();
+ if($('#jIni'))$('#jIni').onclick=()=>{const h=+$('#jProt').value;S.jejumPadrao=h;S.jejum={ini:Date.now(),horas:h};save();render()};
+ if($('#jFim'))$('#jFim').onclick=()=>{if(!confirm('Encerrar o jejum agora?'))return;S.jejuns.push({...S.jejum,fim:Date.now()});S.jejum=null;save();render()};
  document.querySelectorAll('[data-c]').forEach(c=>c.onchange=()=>{(S.checks[hoje()]=S.checks[hoje()]||{})[c.dataset.c]=c.checked;save()});
  if($('#agua'))$('#agua').onclick=()=>{S.agua[hoje()]=(S.agua[hoje()]||0)+250;save();render()};
  if($('#busca'))$('#busca').oninput=e=>{const termos=semAcento(e.target.value).split(/\s+/).filter(Boolean);
   if(termos.join('').length<2){$('#res').innerHTML='';return}
-  const ach=[];for(let i=0;i<TACO.length&&ach.length<50;i++)if(termos.every(t=>BUSCA[i].includes(t)))ach.push(i);
-  ach.sort((a,b)=>(BUSCA[a].startsWith(termos[0])?0:1)-(BUSCA[b].startsWith(termos[0])?0:1));
+  const ach=buscaAlim(e.target.value);
   $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g</span></span><span style="display:flex;gap:6px"><input type="number" value="100" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
   ||'<div class="mut">Não encontrado.</div>';
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addAlimento(TACO[b.dataset.add],document.querySelector(`[data-g="${b.dataset.add}"]`).value));
