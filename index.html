@@ -89,14 +89,15 @@ function login(){$('#nav').innerHTML='';
  <button class="x" id="semConta">Usar sem conta (só neste aparelho)</button>`;
  const go=async tipo=>{$('#err').textContent='';try{const body={email:$('#em').value.trim(),password:$('#pw').value};
   const j=await auth(tipo==='criar'?'signup':'token?grant_type=password',body);
-  if(!j.access_token)throw new Error('Conta criada. Confirme o e-mail e depois toque em Entrar.');
+  if(!j.access_token)throw new Error(`Conta criada! Enviamos um link de confirmação para ${body.email} (veja também o spam). Toque no link e depois em Entrar. Até confirmar, nada fica salvo na conta.`);
   salvaSes(j);await puxa(true);render()}catch(e){$('#err').textContent=e.message}};
  $('#entrar').onclick=()=>go('entrar');$('#criar').onclick=()=>go('criar');
  $('#esqueci').onclick=async()=>{const email=$('#em').value.trim(),err=$('#err');
   if(!email){err.textContent='Digite seu e-mail acima e toque de novo em "Esqueci minha senha".';return}
   try{await auth('recover',{email});err.style.color='var(--ac)';err.textContent=`Enviamos um link para ${email}. Abra o e-mail (veja o spam) e toque no link para criar uma senha nova.`}
   catch(e){err.style.color='';err.textContent=/rate|seconds/i.test(e.message)?'Muitos pedidos seguidos. Espere um minuto e tente de novo.':e.message}};
- $('#semConta').onclick=()=>{try{localStorage.setItem(KEY+'-local','1')}catch(e){};render()}}
+ $('#semConta').onclick=()=>{if(!confirm('Usar sem conta?\n\nSeus registros ficarão SÓ neste aparelho e neste navegador. Eles NÃO vão para a sua conta e serão perdidos se você apagar o app da tela inicial, limpar os dados do navegador ou trocar de celular.\n\nSe você já criou uma conta, toque em Cancelar, confirme o e-mail e use Entrar.'))return;
+  try{localStorage.setItem(KEY+'-local','1')}catch(e){};render()}}
 // Volta dos links do e-mail (confirmação de conta ou senha nova): o Supabase manda a sessão no # da URL
 async function sessaoDoLink(){const h=new URLSearchParams(location.hash.slice(1));if(!h.get('access_token')&&!h.get('error'))return null;
  history.replaceState(null,'',location.pathname+location.search);
@@ -364,7 +365,10 @@ function bindLembretes(){document.querySelectorAll('[data-lb]').forEach(c=>c.onc
 const ABAS={painel:['🏠','Hoje',painel],alimentacao:['🍽️','Comida',alimentacao],cardapio:['📋','Cardápio',cardapio],treinos:['🏋️','Treinos',treinos],evolucao:['📈','Evolução',evolucao]};
 function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadastro();normaliza();
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
- $('#app').innerHTML=ABAS[aba][2]();bind()}
+ $('#app').innerHTML=(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
+  <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+ABAS[aba][2]();bind();
+ if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 function bind(){
  document.querySelectorAll('[data-aba]').forEach(b=>b.onclick=()=>{aba=b.dataset.aba;render();scrollTo(0,0)});
  bindCardapio();bindLembretes();
