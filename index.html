@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f8a5b">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Dieta e Treino</title>
 <style>
 :root{--bg:#f6f7f5;--card:#fff;--tx:#1d2420;--mut:#6b746e;--ac:#1f8a5b;--warn:#c4572e;--ln:#e3e6e2}
@@ -307,7 +307,7 @@ function bindCardapio(){
 // ---- lembretes (notificações do navegador) ----
 let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').then(r=>swReg=r).catch(()=>{});
 const podeNotificar=()=>'Notification' in window&&Notification.permission==='granted';
-function notifica(titulo,corpo,tag){if(!podeNotificar())return;const o={body:corpo,tag,icon:'icon.svg'};
+function notifica(titulo,corpo,tag){if(!podeNotificar())return;const o={body:corpo,tag,icon:'icon-192.png'};
  try{swReg?swReg.showNotification(titulo,o):new Notification(titulo,o)}catch(e){}}
 let avisados={};try{avisados=JSON.parse(localStorage.getItem(KEY+'-avisos'))||{}}catch(e){}
 function avisaUmaVez(chave,...a){if(avisados[chave])return;avisados[chave]=1;try{localStorage.setItem(KEY+'-avisos',JSON.stringify(avisados))}catch(e){};notifica(...a)}

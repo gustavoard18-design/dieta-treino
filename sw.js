@@ -1,6 +1,6 @@
 // Service worker: guarda o app para abrir sem internet e permite notificações no Android
-const CACHE='dieta-v2';
-const ARQS=['./','index.html','alimentos.js','icon.svg','manifest.json'];
+const CACHE='dieta-v3';
+const ARQS=['./','index.html','alimentos.js','icon.svg','icon-192.png','icon-512.png','apple-touch-icon.png','manifest.json'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ARQS)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim()});
 // Rede primeiro (pega versões novas); sem rede, usa o cache. Chamadas ao Supabase não passam pelo cache.
