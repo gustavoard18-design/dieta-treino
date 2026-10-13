@@ -50,7 +50,10 @@ let SES;try{SES=JSON.parse(localStorage.getItem(KEY+'-ses'))}catch(e){}
 const salvaSes=s=>{SES=s;try{s?localStorage.setItem(KEY+'-ses',JSON.stringify(s)):localStorage.removeItem(KEY+'-ses')}catch(e){}};
 let syncMsg='';
 async function auth(tipo,body){const r=await fetch(`${SB_URL}/auth/v1/${tipo}`,{method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
- const j=await r.json();if(!r.ok)throw new Error(j.msg||j.error_description||j.message||'Erro de login');return j}
+ const j=await r.json();if(!r.ok){const m=j.msg||j.error_description||j.message||'';
+  throw new Error({'Email not confirmed':'E-mail ainda não confirmado. Procure o e-mail de confirmação (veja o spam) e clique no link.',
+   'Invalid login credentials':'E-mail ou senha incorretos.','User already registered':'Este e-mail já tem conta. Toque em Entrar.',
+   'missing email or phone':'Digite o e-mail.'}[m]||(/password/i.test(m)?'A senha precisa ter pelo menos 6 caracteres.':m||'Erro de login'))}return j}
 async function token(){if(!SES)return null;if(SES.expires_at*1000-Date.now()>60000)return SES.access_token;
  const j=await auth('token?grant_type=refresh_token',{refresh_token:SES.refresh_token});salvaSes(j);return j.access_token}
 async function rest(method,qs,body){const t=await token();const r=await fetch(`${SB_URL}/rest/v1/app_state${qs}`,{method,
