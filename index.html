@@ -143,16 +143,31 @@ function painel(){const d=dia(hoje()),m=meta(),saldo=d.kcal-d.gasto,mc=macros(ho
   :`<label class="chk"><input type="checkbox" data-c="${i}" ${ch[i]?'checked':''}>${r}</label>`).join('')}
  <div class="row"><span>💧 Água ${f(agua)} / ${f(aguaMeta)} ml</span><button class="ghost" id="agua">+250 ml</button></div></div>`}
 
-function alimentacao(){const d=dia(hoje());
+const TIPOS=['Café da manhã','Almoço','Lanche','Jantar'];
+// Refeição sugerida pelo horário; a escolha manual vale até recarregar
+let tipoSel=null;const tipoAuto=()=>{const h=new Date().getHours();return h<10?TIPOS[0]:h<15?TIPOS[1]:h<19?TIPOS[2]:TIPOS[3]};
+const pcg=(p,c,g)=>`P ${f(p)} · C ${f(c)} · G ${f(g)} g`;
+function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoAuto();
+ const linha=(n,v,a)=>`<div><div class="mut">${n}</div><b>${f(v)} / ${f(a)}</b><div class="bar"><i style="width:${pct(v,a)}%;${v>a*1.05&&n!=='Proteína g'?'background:var(--warn)':''}"></i></div></div>`;
+ const grupos=TIPOS.concat(d.r.map(r=>r.tipo).filter(t=>!TIPOS.includes(t))).map(t=>[t,d.r.filter(r=>r.tipo===t)]).filter(([,rs])=>rs.length);
  return `<h1>Alimentação</h1><div class="card"><h2>Registrar refeição</h2>
- <label>Refeição<select id="tipo"><option>Café da manhã</option><option>Almoço</option><option>Lanche</option><option>Jantar</option></select></label>
- <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado"></label><div id="res"></div></div>
+ <label>Refeição<select id="tipo">${TIPOS.map(t=>`<option ${t===tipo?'selected':''}>${t}</option>`).join('')}</select></label>
+ <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado" autocomplete="off"></label><div id="res"></div></div>
  ${favoritos()}
- <div class="card"><h2>Hoje · ${f(d.kcal)} kcal</h2>${d.r.map(r=>`<div class="row"><span>${r.tipo}: ${r.nome} (${r.g} g)</span><span>${f(r.kcal)} kcal <button class="x" data-del="${r.id}">✕</button></span></div>`).join('')||'<div class="mut">Nada registrado.</div>'}</div>`}
+ <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
+ ${grupos.map(([t,rs])=>{const s=k=>rs.reduce((a,r)=>a+(r[k]||0),0);
+  return `<div class="card"><div class="row"><h2 style="margin:0">${t}</h2><b>${f(s('kcal'))} kcal</b></div><div class="mut" style="margin-bottom:4px">${pcg(s('prot'),s('carb'),s('gord'))}</div>
+  ${rs.map(r=>`<div class="row"><span>${esc(r.nome)}<br><span class="mut">${r.g} g · ${pcg(r.prot,r.carb||0,r.gord||0)}${r.carb==null?' (sem C/G)':''}</span></span>
+  <span style="white-space:nowrap">${f(r.kcal)} kcal <button class="x" data-ed="${r.id}" title="Alterar gramas">✎</button><button class="x" data-del="${r.id}" title="Apagar">✕</button></span></div>`).join('')}</div>`}).join('')
+  ||'<div class="card mut">Nada registrado hoje.</div>'}`}
+// Muda as gramas de um item já registrado, mantendo a proporção dos nutrientes
+function editaGramas(id){const r=S.refeicoes.find(x=>x.id==id);if(!r)return;
+ const v=prompt(`Gramas de ${r.nome}:`,r.g);const g=+String(v||'').replace(',','.');if(!g||g<=0)return;
+ const k=g/r.g;['kcal','prot','carb','gord'].forEach(c=>{if(r[c]!=null)r[c]*=k});r.g=g;save();render()}
 let FAV=[];
 function favoritos(){const cnt={},ult={};S.refeicoes.forEach(r=>{const k=r.nome+'|'+r.g;cnt[k]=(cnt[k]||0)+1;ult[k]=r});
  FAV=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k])=>ult[k]);if(!FAV.length)return'';
- return `<div class="card"><h2>Favoritos</h2>${FAV.map((r,i)=>`<div class="row"><span>${esc(r.nome)} (${r.g} g)</span><button class="ghost" data-fav="${i}">Repetir</button></div>`).join('')}</div>`}
+ return `<div class="card"><h2>Favoritos</h2>${FAV.map((r,i)=>`<div class="row"><span>${esc(r.nome)}<br><span class="mut">${r.g} g · ${f(r.kcal)} kcal</span></span><button class="ghost" data-fav="${i}">Repetir</button></div>`).join('')}</div>`}
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
 const semAcento=t=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const BUSCA=TACO.map(t=>semAcento(t[0]));
@@ -199,7 +214,12 @@ function bind(){
   ach.sort((a,b)=>(BUSCA[a].startsWith(termos[0])?0:1)-(BUSCA[b].startsWith(termos[0])?0:1));
   $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g</span></span><span style="display:flex;gap:6px"><input type="number" value="100" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
   ||'<div class="mut">Não encontrado.</div>';
-  document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addAlimento(TACO[b.dataset.add],document.querySelector(`[data-g="${b.dataset.add}"]`).value))};
+  document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addAlimento(TACO[b.dataset.add],document.querySelector(`[data-g="${b.dataset.add}"]`).value));
+  // Enter no campo de gramas registra; o valor mostrado acompanha as gramas digitadas
+  document.querySelectorAll('[data-g]').forEach(inp=>{inp.onkeydown=ev=>{if(ev.key==='Enter')addAlimento(TACO[inp.dataset.g],inp.value)};
+   inp.oninput=()=>{const t=TACO[inp.dataset.g],g=+inp.value||0;inp.closest('.row').querySelector('.mut').textContent=`${f(t[1]*g/100)} kcal · ${pcg(t[2]*g/100,t[3]*g/100,t[4]*g/100)} em ${g} g`}})};
+ if($('#tipo'))$('#tipo').onchange=e=>{tipoSel=e.target.value};
+ document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>editaGramas(b.dataset.ed));
  document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=()=>{const r=FAV[b.dataset.fav];
   addAlimento([r.nome,r.kcal/r.g*100,r.prot/r.g*100,(r.carb||0)/r.g*100,(r.gord||0)/r.g*100],r.g)});
  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{S.refeicoes=S.refeicoes.filter(r=>r.id!=b.dataset.del);save();render()});
