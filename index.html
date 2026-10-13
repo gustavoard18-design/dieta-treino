@@ -98,15 +98,22 @@ function ajusteSemanal(){ // gasto real estimado pelos últimos 14 dias
  return {gasto:Math.round(gasto),meta:Math.round(gasto+(p.obj==='perder'?-400:p.obj==='ganhar'?300:0)),perdaSem:(a.t-b.t)/dias*7}}
 function meta(){const a=ajusteSemanal();return a?a.meta:metaBase()}
 function protMeta(){return Math.round(PLANOS[S.perfil.plano].p*pesoAtual())}
-function dia(d){const r=S.refeicoes.filter(x=>x.d===d),t=S.treinos.filter(x=>x.d===d);
- return {kcal:r.reduce((s,x)=>s+x.kcal,0),prot:r.reduce((s,x)=>s+x.prot,0),gasto:t.reduce((s,x)=>s+x.kcal,0),r,t}}
+function dia(d){const r=S.refeicoes.filter(x=>x.d===d),t=S.treinos.filter(x=>x.d===d),soma=k=>r.reduce((s,x)=>s+(x[k]||0),0);
+ return {kcal:soma('kcal'),prot:soma('prot'),carb:soma('carb'),gord:soma('gord'),gasto:t.reduce((s,x)=>s+x.kcal,0),r,t}}
+// Corrida acima de 60 min no dia: low carb libera 1 g/kg de carboidrato extra no pós-treino
+const corridaLonga=d=>dia(d).t.some(x=>x.mod.startsWith('Corrida')&&x.min>60);
+// Metas de macros (g) sobre as calorias liberadas no dia: meta + gasto no treino
+function macros(d){const kg=pesoAtual(),pl=S.perfil.plano,kcal=meta()+dia(d).gasto,prot=protMeta();let carb,gord,extra=0;
+ if(pl==='lc'){extra=corridaLonga(d)?Math.round(kg):0;carb=100+extra;gord=(kcal-prot*4-carb*4)/9}
+ else{gord=kcal*(pl==='eq'?0.275:0.25)/9;carb=(kcal-prot*4-gord*9)/4}
+ return {kcal,prot,carb:Math.max(0,Math.round(carb)),gord:Math.max(0,Math.round(gord)),extra}}
 function sequencia(){let n=0,d=new Date();for(;;){const k=d.toISOString().slice(0,10),x=dia(k);
  if(x.r.length&&x.t.length)n++;else if(k!==hoje())break;d.setDate(d.getDate()-1);if(n>999)break}return n}
 
 // ---- telas ----
 let aba='painel';
 const $=s=>document.querySelector(s);const f=n=>Math.round(n).toLocaleString('pt-BR');
-const pct=(a,b)=>Math.min(100,b?a/b*100:0);
+const pct=(a,b)=>Math.max(0,Math.min(100,b?a/b*100:0));
 
 function cadastro(){
  $('#nav').innerHTML='';
@@ -122,14 +129,18 @@ function cadastro(){
   S.perfil={peso:+v('peso'),altura:+v('alt'),idade:+v('idade'),sexo:v('sexo'),ativ:+v('ativ'),obj:v('obj'),pmeta:+v('pmeta'),plano:v('plano')};
   S.pesos=[{d:hoje(),kg:+v('peso')}];save();render()}}
 
-function painel(){const d=dia(hoje()),m=meta(),saldo=d.kcal-d.gasto,pm=protMeta(),pl=PLANOS[S.perfil.plano];
+function painel(){const d=dia(hoje()),m=meta(),saldo=d.kcal-d.gasto,mc=macros(hoje()),pl=PLANOS[S.perfil.plano];
  const ch=S.checks[hoje()]||{},agua=S.agua[hoje()]||0,aguaMeta=Math.round(pesoAtual()*35);
  return `<h1>Hoje</h1><div class="card"><div class="mut">Saldo do dia</div><div class="big">${f(saldo)} / ${f(m)} kcal</div>
  <div class="bar"><i style="width:${pct(saldo,m)}%;${saldo>m?'background:var(--warn)':''}"></i></div>
  <div class="mut">Consumido ${f(d.kcal)} · Gasto no treino ${f(d.gasto)} · Restam ${f(m-saldo)}</div></div>
- <div class="grid"><div class="card"><div class="mut">Proteína</div><b>${f(d.prot)} / ${pm} g</b><div class="bar"><i style="width:${pct(d.prot,pm)}%"></i></div></div>
- <div class="card"><div class="mut">Sequência</div><b>🔥 ${sequencia()} dia(s)</b><div class="mut">refeição + treino</div></div></div>
- <div class="card"><h2>Checklist · ${pl.n}</h2>${pl.regras.map((r,i)=>`<label class="chk"><input type="checkbox" data-c="${i}" ${ch[i]?'checked':''}>${r}</label>`).join('')}
+ <div class="card"><h2>Macros</h2><div class="grid">${[['Proteína',d.prot,mc.prot],['Carboidrato',d.carb,mc.carb],['Gordura',d.gord,mc.gord]].map(([n,v,a])=>
+  `<div><div class="mut">${n}</div><b>${f(v)} / ${f(a)} g</b><div class="bar"><i style="width:${pct(v,a)}%;${v>a*1.05&&n!=='Proteína'?'background:var(--warn)':''}"></i></div></div>`).join('')}
+  <div><div class="mut">Sequência</div><b>🔥 ${sequencia()} dia(s)</b><div class="mut">refeição + treino</div></div></div>
+  ${mc.extra?`<div class="mut" style="margin-top:8px">🏃 Corrida acima de 60 min hoje: +${mc.extra} g de carboidrato liberados no pós-treino.</div>`:''}</div>
+ <div class="card"><h2>Checklist · ${pl.n}</h2>${pl.regras.map((r,i)=>S.perfil.plano==='lc'&&i===2
+  ?`<label class="chk"><input type="checkbox" disabled ${d.r.length&&d.carb<=mc.carb?'checked':''}>Carboidrato ≤ ${mc.carb} g <span class="mut">(hoje ${f(d.carb)} g · automático)</span></label>`
+  :`<label class="chk"><input type="checkbox" data-c="${i}" ${ch[i]?'checked':''}>${r}</label>`).join('')}
  <div class="row"><span>💧 Água ${f(agua)} / ${f(aguaMeta)} ml</span><button class="ghost" id="agua">+250 ml</button></div></div>`}
 
 function alimentacao(){const d=dia(hoje());
