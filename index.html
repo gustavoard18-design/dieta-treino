@@ -36,13 +36,20 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261015-171337"></script>
+<script src="alimentos.js?v=20261015-172052"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
 let S; try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 S=S||{perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};
-const save=()=>{S._t=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){};agendaSync()};
+let avisouMemoria=false;
+const gravaLocal=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){
+ if(!avisouMemoria){avisouMemoria=true;alert(SES?'Não foi possível salvar neste aparelho (memória cheia ou bloqueada). Seus dados continuam indo para a conta.':'ATENÇÃO: não foi possível salvar neste aparelho (memória cheia ou bloqueada). Entre com uma conta para não perder registros.')}return false}};
+const save=()=>{S._t=Date.now();gravaLocal();agendaSync()};
+// Itens apagados ficam marcados (id → quando) para não "voltarem" ao juntar com outro aparelho
+const apaga=(lista,id)=>{S.apagados=S.apagados||{};S.apagados[String(id)]=Date.now();S[lista]=S[lista].filter(x=>String(x.id)!==String(id));save()};
+// Outra aba do mesmo navegador salvou: junta em vez de sobrescrever
+window.addEventListener('storage',e=>{if(e.key!==KEY||!e.newValue)return;try{S=junta(S,JSON.parse(e.newValue));if(S.perfil)render()}catch(x){}});
 
 // ---- Supabase (REST direto, sem biblioteca) ----
 const SB_URL='https://lnfenrfbiymnfwseidbj.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuZmVucmZiaXltbmZ3c2VpZGJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MTIxMzYsImV4cCI6MjEwNzQ4ODEzNn0.jz4Ko-c-lEkbRIcwHrXzpnvxvTR5-f24vB8s8FXC960';
@@ -54,30 +61,37 @@ async function auth(tipo,body){const r=await fetch(`${SB_URL}/auth/v1/${tipo}`,{
   throw new Error({'Email not confirmed':'E-mail ainda não confirmado. Procure o e-mail de confirmação (veja o spam) e clique no link.',
    'Invalid login credentials':'E-mail ou senha incorretos.','User already registered':'Este e-mail já tem conta. Toque em Entrar.',
    'missing email or phone':'Digite o e-mail.'}[m]||(/password/i.test(m)?'A senha precisa ter pelo menos 6 caracteres.':m||'Erro de login'))}return j}
+let sessaoVencida=false;
 async function token(){if(!SES)return null;if(SES.expires_at*1000-Date.now()>60000)return SES.access_token;
- const j=await auth('token?grant_type=refresh_token',{refresh_token:SES.refresh_token});salvaSes(j);return j.access_token}
+ try{const j=await auth('token?grant_type=refresh_token',{refresh_token:SES.refresh_token});salvaSes(j);sessaoVencida=false;return j.access_token}
+ catch(e){if(navigator.onLine!==false&&!/fetch|network|load/i.test(e.message)){sessaoVencida=true;syncMsg='⚠ entre de novo para sincronizar'}throw e}}
 async function rest(method,qs,body){const t=await token();const r=await fetch(`${SB_URL}/rest/v1/app_state${qs}`,{method,
  headers:{apikey:SB_KEY,Authorization:'Bearer '+t,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:body&&JSON.stringify(body)});
  if(!r.ok)throw new Error('sync '+r.status);return method==='GET'?r.json():null}
 // Junta dois estados sem perder registros: listas somam (sem repetir), configurações vêm do mais recente
 function junta(a,b){if(!a||!a.perfil)return b;if(!b||!b.perfil)return a;
  const [novo,velho]=(a._t||0)>=(b._t||0)?[a,b]:[b,a],r={...velho,...novo};
- const uniao=(k,id)=>{const m=new Map();[...(velho[k]||[]),...(novo[k]||[])].forEach(x=>m.set(id(x),x));return[...m.values()]};
+ r.apagados={...(velho.apagados||{}),...(novo.apagados||{})};
+ const uniao=(k,id)=>{const m=new Map();[...(velho[k]||[]),...(novo[k]||[])].forEach(x=>{if(!r.apagados[String(x.id)])m.set(id(x),x)});return[...m.values()]};
  r.refeicoes=uniao('refeicoes',x=>x.id);r.treinos=uniao('treinos',x=>x.id);r.jejuns=uniao('jejuns',x=>x.ini);
  r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);
  r.agua={...velho.agua};Object.entries(novo.agua||{}).forEach(([d,v])=>r.agua[d]=Math.max(v,r.agua[d]||0));
  r.checks={...velho.checks};Object.entries(novo.checks||{}).forEach(([d,c])=>r.checks[d]={...(r.checks[d]||{}),...c});
  ['cardapio','plano','compras'].forEach(k=>{if(!Object.keys(novo[k]||{}).length)r[k]=velho[k]});
  r._t=Math.max(a._t||0,b._t||0);return r}
-// mesclar=true só no login: junta o que estava neste aparelho com a conta. No resto, vale a versão mais recente.
-async function puxa(mesclar){if(!SES)return;try{const rows=await rest('GET','?select=data&user_id=eq.'+SES.user.id);
- const rem=rows[0]&&rows[0].data;
- S=mesclar?junta(S,rem):(rem&&(rem._t||0)>(S._t||0)?rem:S);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
- if(S.perfil&&JSON.stringify(S)!==JSON.stringify(rem))await empurra();syncMsg='✓ sincronizado'}catch(e){syncMsg='⚠ offline, salvo no aparelho'}}
-async function empurra(){await rest('POST','',{user_id:SES.user.id,data:S,updated_at:new Date().toISOString()})}
-let tSync;function agendaSync(){if(!SES)return;clearTimeout(tSync);tSync=setTimeout(async()=>{try{await empurra();syncMsg='✓ sincronizado'}catch(e){syncMsg='⚠ offline, salvo no aparelho'}
+// Sempre junta aparelho + conta: registros feitos em qualquer lugar (inclusive offline) nunca são descartados.
+let pendente=false;
+async function remoto(){const rows=await rest('GET','?select=data&user_id=eq.'+SES.user.id);return rows[0]&&rows[0].data}
+async function puxa(){if(!SES)return;try{const rem=await remoto();S=junta(S,rem);gravaLocal();
+ if(S.perfil&&JSON.stringify(S)!==JSON.stringify(rem))await grava();syncMsg='✓ sincronizado';pendente=false}
+ catch(e){if(!sessaoVencida)syncMsg='⚠ offline, salvo no aparelho'}}
+// Lê a conta, junta e só então grava (outro aparelho pode ter salvo nesse meio-tempo)
+async function empurra(){const rem=await remoto();S=junta(S,rem);gravaLocal();await grava()}
+async function grava(){await rest('POST','',{user_id:SES.user.id,data:S,updated_at:new Date().toISOString()})}
+let tSync;function agendaSync(){if(!SES)return;pendente=true;clearTimeout(tSync);tSync=setTimeout(async()=>{try{await empurra();syncMsg='✓ sincronizado';pendente=false}catch(e){if(!sessaoVencida)syncMsg='⚠ offline, salvo no aparelho'}
  const el=document.getElementById('sync');if(el)el.textContent=syncMsg},800)}
 window.addEventListener('online',()=>agendaSync());
+setInterval(()=>{if(SES&&pendente&&navigator.onLine!==false)agendaSync()},60000); // tenta de novo o que ficou pendente
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&SES)puxa().then(render)});
 
 function login(){$('#nav').innerHTML='';
@@ -90,7 +104,7 @@ function login(){$('#nav').innerHTML='';
  const go=async tipo=>{$('#err').textContent='';try{const body={email:$('#em').value.trim(),password:$('#pw').value};
   const j=await auth(tipo==='criar'?'signup':'token?grant_type=password',body);
   if(!j.access_token)throw new Error(`Conta criada! Enviamos um link de confirmação para ${body.email} (veja também o spam). Toque no link e depois em Entrar. Até confirmar, nada fica salvo na conta.`);
-  salvaSes(j);await puxa(true);render()}catch(e){$('#err').textContent=e.message}};
+  salvaSes(j);sessaoVencida=false;await puxa();render()}catch(e){$('#err').textContent=e.message}};
  $('#entrar').onclick=()=>go('entrar');$('#criar').onclick=()=>go('criar');
  $('#esqueci').onclick=async()=>{const email=$('#em').value.trim(),err=$('#err');
   if(!email){err.textContent='Digite seu e-mail acima e toque de novo em "Esqueci minha senha".';return}
@@ -112,7 +126,7 @@ function novaSenha(){$('#nav').innerHTML='';
   if(a!==b)return $('#err').textContent='As senhas não são iguais.';
   const r=await fetch(`${SB_URL}/auth/v1/user`,{method:'PUT',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify({password:a})});
   if(!r.ok){const j=await r.json().catch(()=>({}));return $('#err').textContent=/different/i.test(j.msg||'')?'Use uma senha diferente da anterior.':(j.msg||'Não foi possível salvar.')}
-  alert('Senha alterada!');await puxa(true);render()}}
+  alert('Senha alterada!');await puxa();render()}}
 const modoLocal=()=>{try{return localStorage.getItem(KEY+'-local')==='1'}catch(e){return false}};
 const dataLocal=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const hoje=()=>dataLocal(new Date());
@@ -216,9 +230,31 @@ const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const semAcento=t=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const BUSCA=TACO.map(t=>semAcento(t[0]));
 // Até 50 índices de TACO que contêm todas as palavras; os que começam pela primeira palavra vêm antes
-function buscaAlim(txt){const termos=semAcento(txt).split(/\s+/).filter(Boolean);if(termos.join('').length<2)return[];
- const ach=[];for(let i=0;i<TACO.length&&ach.length<50;i++)if(termos.every(t=>BUSCA[i].includes(t)))ach.push(i);
- return ach.sort((a,b)=>(BUSCA[a].startsWith(termos[0])?0:1)-(BUSCA[b].startsWith(termos[0])?0:1))}
+// Busca tolerante: aceita erro de digitação e grafia parecida (frango/frago, feijão/fejao, brócolis/brocolis, chuchu/xuxu).
+// Cada palavra digitada recebe nota contra as palavras do alimento: igual > começa igual > contém > som parecido > 1–2 letras erradas.
+const fonetica=w=>w.replace(/ç/g,'c').replace(/ph/g,'f').replace(/ch|sh/g,'x').replace(/ss|sc|ç|z/g,'s').replace(/qu|k|c(?=[aou])/g,'k')
+ .replace(/c(?=[ei])/g,'s').replace(/y/g,'i').replace(/w/g,'v').replace(/h/g,'').replace(/[mn]$/,'').replace(/(.)\1+/g,'$1');
+function distancia(a,b,max){if(Math.abs(a.length-b.length)>max)return max+1;let p=Array.from({length:b.length+1},(_,i)=>i),pp=null;
+ for(let i=1;i<=a.length;i++){const c=[i];let menor=i;for(let j=1;j<=b.length;j++){let v=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));
+  if(pp&&i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])v=Math.min(v,pp[j-2]+1);c[j]=v;if(v<menor)menor=v}if(menor>max)return max+1;pp=p;p=c}return p[b.length]}
+const PALAVRAS=BUSCA.map(n=>n.split(/[^a-z0-9]+/).filter(Boolean));
+const PALAVRAS_F=PALAVRAS.map(ws=>ws.map(fonetica));
+function notaTermo(t,tf,ws,wf,nome){let m=0;if(nome.includes(t))m=6;
+ for(let k=0;k<ws.length&&m<10;k++){const w=ws[k];
+  if(w===t)m=Math.max(m,10);else if(w.startsWith(t))m=Math.max(m,8);else if(t.length>=4&&t.startsWith(w)&&w.length>=4)m=Math.max(m,5);
+  else if(tf.length>=3&&wf[k]===tf)m=Math.max(m,9);else if(tf.length>=3&&wf[k].startsWith(tf))m=Math.max(m,7);
+  else if(t.length>=4){const lim=t.length>=7?2:1,cmp=w.length>t.length+1?w.slice(0,t.length):w,d=Math.min(distancia(t,cmp,lim),distancia(tf,wf[k].slice(0,Math.max(tf.length,3)),lim));
+   if(d<=lim)m=Math.max(m,d===1?5:3)}}
+ return m}
+function buscaAlim(txt){const termos=semAcento(txt).split(/[^a-z0-9]+/).filter(Boolean);if(termos.join('').length<2)return[];
+ const tfs=termos.map(fonetica),res=[];
+ for(let i=0;i<TACO.length;i++){let soma=0,achou=0;for(let k=0;k<termos.length;k++){const n=notaTermo(termos[k],tfs[k],PALAVRAS[i],PALAVRAS_F[i],BUSCA[i]);if(n){achou++;soma+=n}}
+  if(!achou)continue;
+  // todas as palavras encontradas valem muito mais; primeira palavra do alimento casando com a primeira digitada também
+  const bonus=(achou===termos.length?100:0)+(notaTermo(termos[0],tfs[0],PALAVRAS[i].slice(0,1),PALAVRAS_F[i].slice(0,1),'')>=7?8:0);
+  res.push([i,bonus+soma-BUSCA[i].length/100])}
+ const temCompleto=res.some(r=>r[1]>=100);
+ return res.filter(r=>!temCompleto||r[1]>=100).sort((a,b)=>b[1]-a[1]).slice(0,50).map(r=>r[0])}
 // a = [nome, kcal, prot, carb, gord] por 100 g
 function addAlimento(a,g){if(!a||!g)return;g=+g;
  S.refeicoes.push({id:Date.now()+Math.random(),d:hoje(),tipo:$('#tipo')?$('#tipo').value:'Lanche',nome:a[0],g,
@@ -242,6 +278,7 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  <button class="ghost" id="reset">Apagar dados e refazer cadastro</button></div>
  <div class="card"><h2>Conta</h2>${SES?`<div class="mut">${SES.user.email} · <span id="sync">${syncMsg}</span></div><button class="ghost" id="sair" style="margin-top:8px">Sair</button>`
  :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>
+ ${cardBackup()}
  ${cardInstalar(true)}
  ${cardLembretes()}`}
 function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesagens.</div>';
@@ -346,11 +383,11 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261015-171337';let versaoNova=null;
+const VERSAO='20261015-172052';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
-  <div class="row" style="border:0;padding:0"><span><b>🚀 Nova versão disponível</b><br><span class="mut">Toque para atualizar. Seus dados ficam salvos.</span></span>
+  <div class="row" style="border:0;padding:0"><span><b>Nova versão disponível</b><br><span class="mut">Toque para atualizar. Seus dados ficam salvos.</span></span>
   <button id="btnAtualizar">Atualizar</button></div></div>`:''}
 function mostraFaixaVersao(){if(!$('#btnAtualizar')&&$('#app')){$('#app').insertAdjacentHTML('afterbegin',faixaVersao());bindVersao()}}
 function bindVersao(){if($('#btnAtualizar'))$('#btnAtualizar').onclick=atualizaApp}
@@ -385,8 +422,30 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadas
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
+
+// ---- cópias de segurança ----
+// Conta: o servidor guarda uma cópia antes de mudanças (no máx. 1 por hora, e sempre antes de algo sumir) por 60 dias.
+// Arquivo: qualquer pessoa, com ou sem conta, pode baixar e recuperar tudo por um arquivo.
+let copias=null;
+const resumo=d=>`${(d.refeicoes||[]).length} refeições · ${(d.treinos||[]).length} treinos · ${(d.pesos||[]).length} pesagens`;
+function cardBackup(){return`<div class="card"><h2>🛟 Cópias de segurança</h2>
+ <div class="mut" style="margin-bottom:8px">Agora: ${resumo(S)}</div>
+ <div class="grid"><button class="ghost" id="bkExporta">Baixar cópia</button><label class="ghost" style="margin:0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">Recuperar de arquivo<input type="file" id="bkImporta" accept=".json,application/json" style="display:none"></label></div>
+ ${SES?`<div style="margin-top:10px"><button class="x" id="bkLista">Ver cópias guardadas na conta</button></div>
+  ${copias?copias.length?copias.map((c,i)=>`<div class="row"><span>${new Date(c.saved_at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}<br><span class="mut">${resumo(c.data)}</span></span><button class="ghost" data-bk="${i}">Recuperar</button></div>`).join(''):'<div class="mut">Nenhuma cópia ainda.</div>':''}`:''}
+ <div class="mut" style="margin-top:8px">Recuperar <b>junta</b> a cópia com o que você tem agora. Nada atual é apagado.</div></div>`}
+function recupera(d,origem){if(!d||!d.perfil)return alert('Este arquivo não tem dados do app.');
+ const antes=resumo(S);S=junta(S,{...d,_t:0});S._t=Date.now();save();render();alert(`Recuperado de ${origem}.\nAntes: ${antes}\nAgora: ${resumo(S)}`)}
+function bindBackup(){
+ if($('#bkExporta'))$('#bkExporta').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));
+  a.download=`dieta-treino-copia-${hoje()}.json`;document.body.appendChild(a);a.click();a.remove()};
+ if($('#bkImporta'))$('#bkImporta').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{recupera(JSON.parse(await f.text()),'arquivo')}catch(x){alert('Arquivo inválido.')}};
+ if($('#bkLista'))$('#bkLista').onclick=async()=>{try{const t=await token();
+  const r=await fetch(`${SB_URL}/rest/v1/app_state_hist?select=saved_at,data&order=saved_at.desc&limit=15`,{headers:{apikey:SB_KEY,Authorization:'Bearer '+t}});
+  copias=r.ok?await r.json():[];render()}catch(x){alert('Sem conexão para buscar as cópias.')}};
+ document.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>{const c=copias[+b.dataset.bk];if(confirm('Juntar esta cópia com seus dados atuais?'))recupera(c.data,'cópia de '+new Date(c.saved_at).toLocaleString('pt-BR'))})}
 
 // ---- instalar na tela inicial ----
 // Android/Chrome/Edge: o navegador entrega o pedido de instalação (beforeinstallprompt) e o botão abre a janela nativa.
@@ -430,20 +489,30 @@ function bind(){
  document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>editaGramas(b.dataset.ed));
  document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=()=>{const r=FAV[b.dataset.fav];
   addAlimento([r.nome,r.kcal/r.g*100,r.prot/r.g*100,(r.carb||0)/r.g*100,(r.gord||0)/r.g*100],r.g)});
- document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{S.refeicoes=S.refeicoes.filter(r=>r.id!=b.dataset.del);save();render()});
- document.querySelectorAll('[data-delt]').forEach(b=>b.onclick=()=>{S.treinos=S.treinos.filter(r=>r.id!=b.dataset.delt);save();render()});
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{apaga('refeicoes',b.dataset.del);render()});
+ document.querySelectorAll('[data-delt]').forEach(b=>b.onclick=()=>{apaga('treinos',b.dataset.delt);render()});
  if($('#addT'))$('#addT').onclick=()=>{const mod=$('#mod').value,min=+$('#dur').value;
   S.treinos.push({id:Date.now(),d:hoje(),mod,min,kcal:MET[mod]*pesoAtual()*min/60});save();render()};
  document.querySelectorAll('[data-pl]').forEach(s=>s.onchange=()=>{S.plano[s.dataset.pl]=s.value;save()});
  if($('#addP'))$('#addP').onclick=()=>{const kg=+$('#kg').value;S.pesos=S.pesos.filter(p=>p.d!==hoje());S.pesos.push({d:hoje(),kg});save();render()};
  if($('#trocaPlano'))$('#trocaPlano').onchange=e=>{S.perfil.plano=e.target.value;save()};
- if($('#reset'))$('#reset').onclick=()=>{if(confirm('Apagar todos os dados?')){S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};save();aba='painel';render()}};
- if($('#sair'))$('#sair').onclick=()=>{salvaSes(null);try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
+ if($('#reset'))$('#reset').onclick=async()=>{
+  if(!confirm('Apagar TODOS os seus dados (refeições, treinos, pesos, cardápio)?'+(SES?' Isso apaga também da sua conta.':'')))return;
+  if(prompt('Para confirmar, digite APAGAR')!=='APAGAR')return alert('Nada foi apagado.');
+  try{localStorage.setItem(KEY+'-copia-antes-de-apagar',JSON.stringify(S))}catch(e){}
+  S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{},_t:Date.now()};gravaLocal();
+  if(SES)try{await grava()}catch(e){} // grava sem juntar: é o único caso em que a conta é substituída
+  aba='painel';render()};
+ if($('#sair'))$('#sair').onclick=async()=>{
+  const b=$('#sair');b.disabled=true;b.textContent='Salvando na conta…';
+  try{await empurra();pendente=false}catch(e){b.disabled=false;b.textContent='Sair';
+   return alert('Não foi possível enviar seus últimos registros para a conta (sem internet ou sessão vencida). Conecte-se e tente sair de novo. Nada foi apagado.')}
+  salvaSes(null);try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
   S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';render()};
  if($('#logar'))$('#logar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()};
 }
 sessaoDoLink().then(async r=>{if(r&&r.tipo==='recovery')return novaSenha();
- render();if(r&&r.erro&&$('#err'))$('#err').textContent=r.erro;if(SES){await puxa(!!(r&&r.tipo));render()}}).catch(()=>render());
+ render();if(r&&r.erro&&$('#err'))$('#err').textContent=r.erro;if(SES){await puxa();render()}}).catch(()=>render());
 </script>
 </body>
 </html>
