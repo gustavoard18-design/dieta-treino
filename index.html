@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261015-174035"></script>
+<script src="alimentos.js?v=20261015-174732"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -386,7 +386,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261015-174035';let versaoNova=null;
+const VERSAO='20261015-174732';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -439,7 +439,7 @@ function reduz(arq,lado,qual){return new Promise((ok,falha)=>{const im=new Image
  URL.revokeObjectURL(im.src);ok(c.toDataURL('image/jpeg',qual).split(',')[1])};im.onerror=()=>falha(new Error('Não foi possível ler a foto.'));im.src=URL.createObjectURL(arq)})}
 async function analisaFoto(modo){FOTO.carregando=true;FOTO.erro='';FOTO.modo=modo;render();
  try{const r=await fetch(`${SB_URL}/functions/v1/analisa-foto`,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},
-   body:JSON.stringify({imagem:FOTO.img,tipo:'image/jpeg',modo,teste:modoTeste()&&modo==='rapido',miniatura:modoTeste()?FOTO.mini:undefined})});
+   body:JSON.stringify({imagem:FOTO.img,tipo:'image/jpeg',modo,teste:modoTeste()&&modo==='rapido',miniatura:modo==='rapido'?FOTO.mini:undefined})});
   const j=await r.json().catch(()=>({erro:'Resposta inválida do servidor.'}));if(!r.ok||j.erro)throw new Error(j.erro||'Falha ao analisar.');
   FOTO.itens=(j.itens||[]).map(it=>{const cands=buscaAlim(it.nome).slice(0,6);return{...it,gramas:Math.round(it.gramas),cands,escolha:cands[0]}});
   FOTO.obs=j.observacao||'';FOTO.restantes=j.restantes}

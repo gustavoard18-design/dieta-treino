@@ -43,3 +43,9 @@ create table if not exists public.foto_teste (
 );
 alter table public.foto_teste enable row level security;
 create policy "dono le teste" on public.foto_teste for select using (auth.uid() = user_id);
+
+-- Contas em teste Haiku x Sonnet (ligado no servidor, vale em qualquer aparelho/navegador da conta)
+create table if not exists public.foto_teste_contas (user_id uuid primary key references auth.users(id) on delete cascade);
+alter table public.foto_teste_contas enable row level security;
+create policy "dono ve se testa" on public.foto_teste_contas for select using (auth.uid() = user_id);
+insert into public.foto_teste_contas (user_id) select id from auth.users where email = 'thaywanedsa@gmail.com' on conflict do nothing;

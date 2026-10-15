@@ -97,8 +97,12 @@ Deno.serve(async (req) => {
     return resposta({ erro: `Você usou as ${LIMITE_DIA} análises ${modo === "melhor" ? "detalhadas " : ""}de hoje. Amanhã libera de novo.` }, 429);
   }
 
+  // Teste: pedido pelo app (?teste=fotos) ou conta marcada em foto_teste_contas; só na análise rápida
+  const { data: contaTeste } = await admin.from("foto_teste_contas").select("user_id").eq("user_id", user.id).maybeSingle();
+  const emTeste = modo === "rapido" && (corpo.teste || !!contaTeste);
+
   try {
-    if (corpo.teste) {
+    if (emTeste) {
       const [haiku, sonnet] = await Promise.allSettled([
         analisa(MODELOS.rapido, imagem, tipo),
         analisa(MODELOS.melhor, imagem, tipo),
