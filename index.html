@@ -242,6 +242,7 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  <button class="ghost" id="reset">Apagar dados e refazer cadastro</button></div>
  <div class="card"><h2>Conta</h2>${SES?`<div class="mut">${SES.user.email} · <span id="sync">${syncMsg}</span></div><button class="ghost" id="sair" style="margin-top:8px">Sair</button>`
  :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>
+ ${cardInstalar(true)}
  ${cardLembretes()}`}
 function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesagens.</div>';
  const W=600,H=180,ks=tr.flatMap(p=>[p.kg,p.t]),mn=Math.min(...ks)-.5,mx=Math.max(...ks)+.5;
@@ -367,8 +368,31 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadas
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+ABAS[aba][2]();bind();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
+
+// ---- instalar na tela inicial ----
+// Android/Chrome/Edge: o navegador entrega o pedido de instalação (beforeinstallprompt) e o botão abre a janela nativa.
+// iPhone/iPad: não existe instalação automática; mostramos o passo a passo do botão Compartilhar.
+let pedidoInstalar=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pedidoInstalar=e;if(S&&S.perfil)render()});
+window.addEventListener('appinstalled',()=>{pedidoInstalar=null;render()});
+const instalado=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const ehIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const adiado=()=>{try{return Date.now()<+(localStorage.getItem(KEY+'-instalarDepois')||0)}catch(e){return false}};
+// fixo=false: aparece no topo de todas as abas (some por 7 dias em "Agora não"); true: card fixo na aba Evolução
+function cardInstalar(fixo){if(instalado()||(!fixo&&adiado()))return'';
+ const passos=ehIOS()?`<ol style="margin:6px 0 8px;padding-left:20px;font-size:14px">
+   <li>Toque em <b>Compartilhar</b> <span style="display:inline-block;border:1.5px solid currentColor;border-radius:4px;padding:0 4px;font-size:12px">⬆</span> na barra do Safari</li>
+   <li>Role e toque em <b>Adicionar à Tela de Início</b></li><li>Toque em <b>Adicionar</b></li></ol>
+   <div class="mut" style="margin-bottom:8px">No iPhone funciona pelo Safari. Depois, abra pelo ícone e entre com a sua conta.</div>`
+  :pedidoInstalar?`<div class="mut" style="margin:4px 0 8px">Abra direto da tela inicial, em tela cheia e sem a barra do navegador.</div><button id="btnInstalar">📲 Instalar agora</button>`
+  :fixo?`<div class="mut" style="margin:4px 0 8px">No menu do navegador (⋮), toque em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</div>`:null;
+ if(passos===null)return'';
+ return`<div class="card"><div class="row" style="border:0;padding:0"><b>📲 Adicione o app à tela inicial</b>${fixo?'':'<button class="x" id="instalarDepois">Agora não</button>'}</div>${passos}</div>`}
+function bindInstalar(){
+ if($('#btnInstalar'))$('#btnInstalar').onclick=async()=>{if(!pedidoInstalar)return;pedidoInstalar.prompt();await pedidoInstalar.userChoice;pedidoInstalar=null;render()};
+ if($('#instalarDepois'))$('#instalarDepois').onclick=()=>{try{localStorage.setItem(KEY+'-instalarDepois',Date.now()+7*864e5)}catch(e){};render()}}
 function bind(){
  document.querySelectorAll('[data-aba]').forEach(b=>b.onclick=()=>{aba=b.dataset.aba;render();scrollTo(0,0)});
  bindCardapio();bindLembretes();
