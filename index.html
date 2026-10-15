@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js"></script>
+<script src="alimentos.js?v=20261015-171337"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -343,6 +343,23 @@ function bindCardapio(){
 
 // ---- lembretes (notificações do navegador) ----
 let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').then(r=>swReg=r).catch(()=>{});
+
+// ---- aviso de atualização ----
+// VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
+const VERSAO='20261015-171337';let versaoNova=null;
+async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
+ const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
+function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
+  <div class="row" style="border:0;padding:0"><span><b>🚀 Nova versão disponível</b><br><span class="mut">Toque para atualizar. Seus dados ficam salvos.</span></span>
+  <button id="btnAtualizar">Atualizar</button></div></div>`:''}
+function mostraFaixaVersao(){if(!$('#btnAtualizar')&&$('#app')){$('#app').insertAdjacentHTML('afterbegin',faixaVersao());bindVersao()}}
+function bindVersao(){if($('#btnAtualizar'))$('#btnAtualizar').onclick=atualizaApp}
+async function atualizaApp(){const b=$('#btnAtualizar');if(b){b.disabled=true;b.textContent='Atualizando…'}
+ try{if(SES)await empurra()}catch(e){} // envia o que estiver pendente antes de recarregar
+ try{if(swReg)await swReg.update();if(window.caches)for(const k of await caches.keys())await caches.delete(k)}catch(e){}
+ location.replace(location.pathname+'?v='+encodeURIComponent(versaoNova||Date.now()))}
+checaVersao();setInterval(checaVersao,30*6e4);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checaVersao()});
 const podeNotificar=()=>'Notification' in window&&Notification.permission==='granted';
 function notifica(titulo,corpo,tag){if(!podeNotificar())return;const o={body:corpo,tag,icon:'icon-192.png'};
  try{swReg?swReg.showNotification(titulo,o):new Notification(titulo,o)}catch(e){}}
@@ -366,9 +383,9 @@ function bindLembretes(){document.querySelectorAll('[data-lb]').forEach(c=>c.onc
 const ABAS={painel:['🏠','Hoje',painel],alimentacao:['🍽️','Comida',alimentacao],cardapio:['📋','Cardápio',cardapio],treinos:['🏋️','Treinos',treinos],evolucao:['📈','Evolução',evolucao]};
 function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadastro();normaliza();
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
- $('#app').innerHTML=(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
+ $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 
 // ---- instalar na tela inicial ----
