@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261015-172052"></script>
+<script src="alimentos.js?v=20261015-174035"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -210,7 +210,10 @@ function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoA
  const grupos=TIPOS.concat(d.r.map(r=>r.tipo).filter(t=>!TIPOS.includes(t))).map(t=>[t,d.r.filter(r=>r.tipo===t)]).filter(([,rs])=>rs.length);
  return `<h1>Alimentação</h1><div class="card"><h2>Registrar refeição</h2>
  <label>Refeição<select id="tipo">${TIPOS.map(t=>`<option ${t===tipo?'selected':''}>${t}</option>`).join('')}</select></label>
- <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado" autocomplete="off"></label><div id="res"></div></div>
+ <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado" autocomplete="off"></label><div id="res"></div>
+ ${SES?`<label class="ghost" style="display:block;margin:8px 0 0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">📷 Registrar por foto${modoTeste()?' (teste)':''}<input type="file" id="fotoInput" accept="image/*" capture="environment" style="display:none"></label>`
+  :`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
+ ${cardFoto()}
  ${favoritos()}
  <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
  ${grupos.map(([t,rs])=>{const s=k=>rs.reduce((a,r)=>a+(r[k]||0),0);
@@ -383,7 +386,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261015-172052';let versaoNova=null;
+const VERSAO='20261015-174035';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -422,8 +425,53 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadas
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
+
+// ---- registro por foto (IA) ----
+// A foto é reduzida no aparelho (1024 px) e enviada à função analisa-foto do Supabase, que chama a IA.
+// Rápido = Claude Haiku 5.5; "Analisar melhor" = Claude Sonnet 5.5. A pessoa revisa tudo antes de salvar.
+const modoTeste=()=>{try{return localStorage.getItem(KEY+'-teste')==='1'}catch(e){return false}};
+if(new URLSearchParams(location.search).get('teste')==='fotos'){try{localStorage.setItem(KEY+'-teste','1')}catch(e){}history.replaceState(null,'',location.pathname)}
+let FOTO=null; // {img, mini, carregando, modo, erro, itens:[{nome,gramas,confianca,cands,escolha}], obs, restantes}
+function reduz(arq,lado,qual){return new Promise((ok,falha)=>{const im=new Image();im.onload=()=>{const k=Math.min(1,lado/Math.max(im.width,im.height)),
+ c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+ URL.revokeObjectURL(im.src);ok(c.toDataURL('image/jpeg',qual).split(',')[1])};im.onerror=()=>falha(new Error('Não foi possível ler a foto.'));im.src=URL.createObjectURL(arq)})}
+async function analisaFoto(modo){FOTO.carregando=true;FOTO.erro='';FOTO.modo=modo;render();
+ try{const r=await fetch(`${SB_URL}/functions/v1/analisa-foto`,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},
+   body:JSON.stringify({imagem:FOTO.img,tipo:'image/jpeg',modo,teste:modoTeste()&&modo==='rapido',miniatura:modoTeste()?FOTO.mini:undefined})});
+  const j=await r.json().catch(()=>({erro:'Resposta inválida do servidor.'}));if(!r.ok||j.erro)throw new Error(j.erro||'Falha ao analisar.');
+  FOTO.itens=(j.itens||[]).map(it=>{const cands=buscaAlim(it.nome).slice(0,6);return{...it,gramas:Math.round(it.gramas),cands,escolha:cands[0]}});
+  FOTO.obs=j.observacao||'';FOTO.restantes=j.restantes}
+ catch(e){FOTO.erro=/fetch|network|load/i.test(e.message)?'Sem conexão. Tente de novo.':e.message}
+ FOTO.carregando=false;render()}
+function cardFoto(){if(!FOTO)return'';
+ if(FOTO.carregando)return`<div class="card"><h2>📷 Analisando a foto…</h2><div class="mut">${FOTO.modo==='melhor'?'Análise detalhada, pode levar alguns segundos.':'Só um instante.'}</div></div>`;
+ const it=FOTO.itens||[],tot=it.reduce((s,x)=>{const a=TACO[x.escolha];return a?s+a[1]*x.gramas/100:s},0);
+ return`<div class="card" id="cardFoto"><div class="row" style="border:0;padding:0"><h2 style="margin:0">📷 Confira antes de salvar</h2><button class="x" id="fotoCancela">✕</button></div>
+  <img src="data:image/jpeg;base64,${FOTO.mini}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin:8px 0" alt="">
+  ${FOTO.erro?`<div style="color:var(--warn);margin-bottom:8px">${esc(FOTO.erro)}</div>`:''}
+  ${it.map((x,i)=>`<div style="border-bottom:1px solid var(--ln);padding:8px 0"><div class="mut">IA: ${esc(x.nome)}${x.confianca==='baixa'?' · ⚠ pouca certeza':''}</div>
+   <div style="display:flex;gap:6px;margin-top:4px"><select data-fe="${i}" style="flex:1;margin:0">${x.cands.map(c=>`<option value="${c}" ${c===x.escolha?'selected':''}>${esc(TACO[c][0])}</option>`).join('')||'<option value="">Não achei na base</option>'}</select>
+   <input type="number" data-fg="${i}" value="${x.gramas}" style="width:72px;margin:0"><span style="align-self:center">g</span><button class="x" data-fx="${i}">✕</button></div>
+   ${x.escolha!=null&&TACO[x.escolha]?`<div class="mut">${f(TACO[x.escolha][1]*x.gramas/100)} kcal</div>`:''}</div>`).join('')}
+  ${FOTO.obs?`<div class="mut" style="margin:8px 0">${esc(FOTO.obs)}</div>`:''}
+  ${it.length?`<div style="margin:8px 0"><b>Total: ${f(tot)} kcal</b></div>`:''}
+  <div class="grid">${it.length?`<button id="fotoSalva">Salvar em ${esc(tipoSel||tipoAuto())}</button>`:''}
+   ${FOTO.modo!=='melhor'?`<button class="ghost" id="fotoMelhor">🔍 Analisar melhor</button>`:''}</div>
+  <div class="mut" style="margin-top:6px">As gramas são estimativas: ajuste se precisar.${FOTO.restantes!=null?` · ${FOTO.restantes} análises restantes hoje`:''}</div></div>`}
+function bindFoto(){
+ if($('#fotoInput'))$('#fotoInput').onchange=async e=>{const arq=e.target.files[0];if(!arq)return;
+  try{FOTO={img:await reduz(arq,1024,.85),mini:await reduz(arq,360,.6),itens:[]};analisaFoto('rapido')}catch(x){alert(x.message)}};
+ if($('#fotoCancela'))$('#fotoCancela').onclick=()=>{FOTO=null;render()};
+ if($('#fotoMelhor'))$('#fotoMelhor').onclick=()=>analisaFoto('melhor');
+ document.querySelectorAll('[data-fe]').forEach(s=>s.onchange=()=>{FOTO.itens[+s.dataset.fe].escolha=s.value===''?null:+s.value;render()});
+ document.querySelectorAll('[data-fg]').forEach(s=>s.onchange=()=>{FOTO.itens[+s.dataset.fg].gramas=Math.max(0,+s.value||0);render()});
+ document.querySelectorAll('[data-fx]').forEach(b=>b.onclick=()=>{FOTO.itens.splice(+b.dataset.fx,1);render()});
+ if($('#fotoSalva'))$('#fotoSalva').onclick=()=>{const tipo=tipoSel||tipoAuto();let n=0;
+  FOTO.itens.forEach(x=>{const a=TACO[x.escolha];if(!a||!x.gramas)return;n++;const g=x.gramas;
+   S.refeicoes.push({id:Date.now()+Math.random(),d:hoje(),tipo,nome:a[0],g,kcal:a[1]*g/100,prot:a[2]*g/100,carb:a[3]*g/100,gord:a[4]*g/100,foto:FOTO.modo})});
+  FOTO=null;save();render();if(n)scrollTo(0,0)}}
 
 // ---- cópias de segurança ----
 // Conta: o servidor guarda uma cópia antes de mudanças (no máx. 1 por hora, e sempre antes de algo sumir) por 60 dias.
