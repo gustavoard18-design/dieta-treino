@@ -49,3 +49,11 @@ create table if not exists public.foto_teste_contas (user_id uuid primary key re
 alter table public.foto_teste_contas enable row level security;
 create policy "dono ve se testa" on public.foto_teste_contas for select using (auth.uid() = user_id);
 insert into public.foto_teste_contas (user_id) select id from auth.users where email = 'thaywanedsa@gmail.com' on conflict do nothing;
+
+-- Só contas liberadas usam o registro por foto (IA)
+create table if not exists public.foto_contas_liberadas (user_id uuid primary key references auth.users(id) on delete cascade);
+alter table public.foto_contas_liberadas enable row level security;
+create policy "dono ve se liberado" on public.foto_contas_liberadas for select using (auth.uid() = user_id);
+insert into public.foto_contas_liberadas (user_id) select id from auth.users where email = 'thaywanedsa@gmail.com' on conflict do nothing;
+-- Para liberar outra pessoa:
+-- insert into public.foto_contas_liberadas (user_id) select id from auth.users where email = 'email@exemplo.com';

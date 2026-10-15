@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261015-174732"></script>
+<script src="alimentos.js?v=20261015-175635"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -59,7 +59,7 @@ let syncMsg='';
 async function auth(tipo,body){const r=await fetch(`${SB_URL}/auth/v1/${tipo}`,{method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
  const j=await r.json();if(!r.ok){const m=j.msg||j.error_description||j.message||'';
   throw new Error({'Email not confirmed':'E-mail ainda não confirmado. Procure o e-mail de confirmação (veja o spam) e clique no link.',
-   'Invalid login credentials':'E-mail ou senha incorretos.','User already registered':'Este e-mail já tem conta. Toque em Entrar.',
+   'Invalid login credentials':'E-mail ou senha incorretos.','User already registered':'Este e-mail já tem conta. Toque em Entrar.','Signups not allowed for this instance':'Novas contas só por convite. Peça ao administrador do app.',
    'missing email or phone':'Digite o e-mail.'}[m]||(/password/i.test(m)?'A senha precisa ter pelo menos 6 caracteres.':m||'Erro de login'))}return j}
 let sessaoVencida=false;
 async function token(){if(!SES)return null;if(SES.expires_at*1000-Date.now()>60000)return SES.access_token;
@@ -98,14 +98,15 @@ function login(){$('#nav').innerHTML='';
  $('#app').innerHTML=`<h1>Entrar</h1><div class="card"><div class="mut" style="margin-bottom:10px">Entre para sincronizar seus dados entre celular e computador.</div>
  <label>E-mail<input id="em" type="email" autocomplete="email"></label><label>Senha (mín. 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label>
  <div id="err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div>
- <div class="grid"><button id="entrar">Entrar</button><button class="ghost" id="criar">Criar conta</button></div>
+ <button id="entrar" style="width:100%">Entrar</button>
+ <div class="mut" style="margin-top:8px">Novas contas só por convite: peça ao administrador do app e use o link que chegar no seu e-mail.</div>
  <button class="x" id="esqueci" style="margin-top:10px">Esqueci minha senha</button></div>
  <button class="x" id="semConta">Usar sem conta (só neste aparelho)</button>`;
  const go=async tipo=>{$('#err').textContent='';try{const body={email:$('#em').value.trim(),password:$('#pw').value};
   const j=await auth(tipo==='criar'?'signup':'token?grant_type=password',body);
   if(!j.access_token)throw new Error(`Conta criada! Enviamos um link de confirmação para ${body.email} (veja também o spam). Toque no link e depois em Entrar. Até confirmar, nada fica salvo na conta.`);
   salvaSes(j);sessaoVencida=false;await puxa();render()}catch(e){$('#err').textContent=e.message}};
- $('#entrar').onclick=()=>go('entrar');$('#criar').onclick=()=>go('criar');
+ $('#entrar').onclick=()=>go('entrar');
  $('#esqueci').onclick=async()=>{const email=$('#em').value.trim(),err=$('#err');
   if(!email){err.textContent='Digite seu e-mail acima e toque de novo em "Esqueci minha senha".';return}
   try{await auth('recover',{email});err.style.color='var(--ac)';err.textContent=`Enviamos um link para ${email}. Abra o e-mail (veja o spam) e toque no link para criar uma senha nova.`}
@@ -118,15 +119,15 @@ async function sessaoDoLink(){const h=new URLSearchParams(location.hash.slice(1)
  if(h.get('error'))return{erro:h.get('error_code')==='otp_expired'?'Este link expirou ou já foi usado. Peça um novo.':(h.get('error_description')||'Link inválido.').replace(/\+/g,' ')};
  const at=h.get('access_token'),r=await fetch(`${SB_URL}/auth/v1/user`,{headers:{apikey:SB_KEY,Authorization:'Bearer '+at}});if(!r.ok)return{erro:'Não foi possível validar o link. Peça um novo.'};
  salvaSes({access_token:at,refresh_token:h.get('refresh_token'),expires_at:+h.get('expires_at')||Date.now()/1000+3600,user:await r.json()});return{tipo:h.get('type')}}
-function novaSenha(){$('#nav').innerHTML='';
- $('#app').innerHTML=`<h1>Nova senha</h1><div class="card"><div class="mut" style="margin-bottom:10px">Conta: ${esc(SES.user.email)}</div>
+function novaSenha(tipo){$('#nav').innerHTML='';
+ $('#app').innerHTML=`<h1>${tipo==='invite'?'Bem-vindo! Crie sua senha':'Nova senha'}</h1><div class="card"><div class="mut" style="margin-bottom:10px">Conta: ${esc(SES.user.email)}</div>
  <label>Nova senha (mín. 6 caracteres)<input id="np1" type="password" autocomplete="new-password"></label><label>Repita a senha<input id="np2" type="password" autocomplete="new-password"></label>
  <div id="err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div><button id="salvaSenha">Salvar senha</button></div>`;
  $('#salvaSenha').onclick=async()=>{const a=$('#np1').value,b=$('#np2').value;if(a.length<6)return $('#err').textContent='A senha precisa ter pelo menos 6 caracteres.';
   if(a!==b)return $('#err').textContent='As senhas não são iguais.';
   const r=await fetch(`${SB_URL}/auth/v1/user`,{method:'PUT',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify({password:a})});
   if(!r.ok){const j=await r.json().catch(()=>({}));return $('#err').textContent=/different/i.test(j.msg||'')?'Use uma senha diferente da anterior.':(j.msg||'Não foi possível salvar.')}
-  alert('Senha alterada!');await puxa();render()}}
+  alert(tipo==='invite'?'Conta pronta!':'Senha alterada!');await puxa();render()}}
 const modoLocal=()=>{try{return localStorage.getItem(KEY+'-local')==='1'}catch(e){return false}};
 const dataLocal=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const hoje=()=>dataLocal(new Date());
@@ -211,8 +212,8 @@ function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoA
  return `<h1>Alimentação</h1><div class="card"><h2>Registrar refeição</h2>
  <label>Refeição<select id="tipo">${TIPOS.map(t=>`<option ${t===tipo?'selected':''}>${t}</option>`).join('')}</select></label>
  <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado" autocomplete="off"></label><div id="res"></div>
- ${SES?`<label class="ghost" style="display:block;margin:8px 0 0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">📷 Registrar por foto${modoTeste()?' (teste)':''}<input type="file" id="fotoInput" accept="image/*" capture="environment" style="display:none"></label>`
-  :`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
+ ${SES&&fotoLiberada?`<label class="ghost" style="display:block;margin:8px 0 0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">📷 Registrar por foto${modoTeste()?' (teste)':''}<input type="file" id="fotoInput" accept="image/*" capture="environment" style="display:none"></label>`
+  :SES?'':`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
  ${cardFoto()}
  ${favoritos()}
  <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
@@ -386,7 +387,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261015-174732';let versaoNova=null;
+const VERSAO='20261015-175635';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -425,12 +426,17 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadas
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 
 // ---- registro por foto (IA) ----
 // A foto é reduzida no aparelho (1024 px) e enviada à função analisa-foto do Supabase, que chama a IA.
 // Rápido = Claude Haiku 5.5; "Analisar melhor" = Claude Sonnet 5.5. A pessoa revisa tudo antes de salvar.
+// Só contas liberadas (tabela foto_contas_liberadas) veem o botão; a função no servidor também confere
+let fotoLiberada=false,fotoChecada=null;
+async function checaFotoLiberada(){if(!SES||fotoChecada===SES.user.id)return;fotoChecada=SES.user.id;
+ try{const r=await fetch(`${SB_URL}/rest/v1/foto_contas_liberadas?select=user_id&user_id=eq.${SES.user.id}`,{headers:{apikey:SB_KEY,Authorization:'Bearer '+await token()}});
+  const ok=r.ok&&(await r.json()).length>0;if(ok!==fotoLiberada){fotoLiberada=ok;render()}}catch(e){fotoChecada=null}}
 const modoTeste=()=>{try{return localStorage.getItem(KEY+'-teste')==='1'}catch(e){return false}};
 if(new URLSearchParams(location.search).get('teste')==='fotos'){try{localStorage.setItem(KEY+'-teste','1')}catch(e){}history.replaceState(null,'',location.pathname)}
 let FOTO=null; // {img, mini, carregando, modo, erro, itens:[{nome,gramas,confianca,cands,escolha}], obs, restantes}
@@ -555,11 +561,11 @@ function bind(){
   const b=$('#sair');b.disabled=true;b.textContent='Salvando na conta…';
   try{await empurra();pendente=false}catch(e){b.disabled=false;b.textContent='Sair';
    return alert('Não foi possível enviar seus últimos registros para a conta (sem internet ou sessão vencida). Conecte-se e tente sair de novo. Nada foi apagado.')}
-  salvaSes(null);try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
+  salvaSes(null);fotoLiberada=false;fotoChecada=null;try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
   S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';render()};
  if($('#logar'))$('#logar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()};
 }
-sessaoDoLink().then(async r=>{if(r&&r.tipo==='recovery')return novaSenha();
+sessaoDoLink().then(async r=>{if(r&&(r.tipo==='recovery'||r.tipo==='invite'))return novaSenha(r.tipo);
  render();if(r&&r.erro&&$('#err'))$('#err').textContent=r.erro;if(SES){await puxa();render()}}).catch(()=>render());
 </script>
 </body>

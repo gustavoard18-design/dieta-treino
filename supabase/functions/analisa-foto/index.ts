@@ -89,8 +89,13 @@ Deno.serve(async (req) => {
   const modo = corpo.modo === "melhor" ? "melhor" : "rapido";
   if (!imagem || imagem.length > 2_500_000) return resposta({ erro: "Foto ausente ou grande demais." }, 400);
 
-  // Limite diário (conta antes de chamar a IA; devolve se a chamada falhar)
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // Só contas liberadas (tabela foto_contas_liberadas) podem usar a IA
+  const { data: liberada } = await admin.from("foto_contas_liberadas").select("user_id").eq("user_id", user.id).maybeSingle();
+  if (!liberada) return resposta({ erro: "O registro por foto ainda não foi liberado para a sua conta." }, 403);
+
+  // Limite diário (conta antes de chamar a IA; devolve se a chamada falhar)
   const { data: usadas, error: erroUso } = await admin.rpc("usa_foto", { p_uid: user.id, p_modo: modo, p_limite: LIMITE_DIA });
   if (erroUso) return resposta({ erro: "Não foi possível verificar o limite diário." }, 500);
   if (usadas === -1) {
