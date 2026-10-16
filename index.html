@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261016-112230"></script>
+<script src="alimentos.js?v=20261016-114417"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -182,9 +182,10 @@ function cadastro(){
  <label>Objetivo<select id="obj"><option value="perder">Perder peso</option><option value="manter">Manter</option><option value="ganhar">Ganhar</option></select></label>
  <label>Peso-meta (kg)<input id="pmeta" type="number" step="0.1" value="75"></label>
  <label>Plano<select id="plano">${Object.entries(PLANOS).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('')}</select></label>
+ <div style="grid-column:1/-1">${camposAlergias()}</div>
  </div><button id="ok">Começar</button></div>`;
  $('#ok').onclick=()=>{const v=id=>$('#'+id).value;
-  S.perfil={peso:+v('peso'),altura:+v('alt'),idade:+v('idade'),sexo:v('sexo'),ativ:+v('ativ'),obj:v('obj'),pmeta:+v('pmeta'),plano:v('plano')};
+  S.perfil={peso:+v('peso'),altura:+v('alt'),idade:+v('idade'),sexo:v('sexo'),ativ:+v('ativ'),obj:v('obj'),pmeta:+v('pmeta'),plano:v('plano'),alergias:leAlergias()};
   S.pesos=[{d:hoje(),kg:+v('peso')}];save();render()}}
 
 function painel(){const d=dia(hoje()),m=meta(),saldo=d.kcal-d.gasto,mc=macros(hoje()),pl=PLANOS[S.perfil.plano];
@@ -220,7 +221,7 @@ function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoA
  <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
  ${grupos.map(([t,rs])=>{const s=k=>rs.reduce((a,r)=>a+(r[k]||0),0);
   return `<div class="card"><div class="row"><h2 style="margin:0">${t}</h2><b>${f(s('kcal'))} kcal</b></div><div class="mut" style="margin-bottom:4px">${pcg(s('prot'),s('carb'),s('gord'))}</div>
-  ${rs.map(r=>`<div class="row"><span>${esc(r.nome)}<br><span class="mut">${r.g} g · ${pcg(r.prot,r.carb||0,r.gord||0)}${r.carb==null?' (sem C/G)':''}</span></span>
+  ${rs.map(r=>`<div class="row"><span>${esc(r.nome)}${tagAlergia(r.nome)}<br><span class="mut">${r.g} g · ${pcg(r.prot,r.carb||0,r.gord||0)}${r.carb==null?' (sem C/G)':''}</span></span>
   <span style="white-space:nowrap">${f(r.kcal)} kcal <button class="x" data-ed="${r.id}" title="Alterar gramas">✎</button><button class="x" data-del="${r.id}" title="Apagar">✕</button></span></div>`).join('')}</div>`}).join('')
   ||'<div class="card mut">Nada registrado hoje.</div>'}`}
 // Muda as gramas de um item já registrado, mantendo a proporção dos nutrientes
@@ -303,7 +304,8 @@ function buscaAlim(txt){const termos=semAcento(txt).split(/[^a-z0-9]+/).filter(B
  const temCompleto=res.some(r=>r[1]>=100);
  return res.filter(r=>!temCompleto||r[1]>=100).sort((a,b)=>b[1]-a[1]).slice(0,50).map(r=>r[0])}
 // a = [nome, kcal, prot, carb, gord] por 100 g
-function addAlimento(a,g){if(!a||!g)return;g=+g;
+function addAlimento(a,g){if(!a||!g)return;g=+g;const al=alergiasDe(a[0]);
+ if(al.length&&!confirm(`Atenção: "${a[0]}" pode conter ${al.join(', ')}, que está nas suas restrições.\n\nRegistrar mesmo assim?`))return;
  S.refeicoes.push({id:Date.now()+Math.random(),d:hoje(),tipo:$('#tipo')?$('#tipo').value:'Lanche',nome:a[0],g,
   kcal:a[1]*g/100,prot:a[2]*g/100,carb:(a[3]||0)*g/100,gord:(a[4]||0)*g/100});save();render()}
 
@@ -323,6 +325,7 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  <div class="card"><h2>Meta de calorias</h2><div class="big">${f(meta())} kcal</div><div class="mut">${a?`Ajustada pelo gasto real estimado (${f(a.gasto)} kcal/dia).`:'Calculada por fórmula (Mifflin-St Jeor). Ajuste automático após 7+ dias de dados.'}</div></div>
  <div class="card"><h2>Previsão</h2>${prev}</div>
  <div class="card"><h2>Perfil</h2><label>Plano<select id="trocaPlano">${Object.entries(PLANOS).map(([k,v])=>`<option value="${k}" ${k===p.plano?'selected':''}>${v.n}</option>`).join('')}</select></label>
+ ${camposAlergias(p.alergias)}<button class="ghost" id="alSalva" style="width:100%;margin-bottom:8px">Salvar alergias</button>
  <button class="ghost" id="reset">Apagar dados e refazer cadastro</button></div>
  <div class="card"><h2>Conta</h2>${SES?`<div class="mut">${SES.user.email} · <span id="sync">${syncMsg}</span></div><button class="ghost" id="sair" style="margin-top:8px">Sair</button>`
  :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>
@@ -337,7 +340,7 @@ function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesage
  ${tr.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.kg)}" r="3" fill="var(--mut)"/>`).join('')}</svg>`}
 
 // ---- LGPD: consentimento, privacidade e exclusão ----
-const VERSAO_POLITICA='2026-10-16';
+const VERSAO_POLITICA='2026-10-16b';
 function consentimento(){$('#nav').innerHTML='';const c=S.consentimento||{};
  $('#app').innerHTML=`<h1>Sua privacidade</h1><div class="card">
   <div class="mut" style="margin-bottom:10px">Este app guarda dados de saúde (peso, medidas, alimentação e treinos). Pela LGPD, precisamos da sua autorização. Leia a <a href="privacidade.html" target="_blank" style="color:var(--ac)">Política de Privacidade</a>.</div>
@@ -345,6 +348,7 @@ function consentimento(){$('#nav').innerHTML='';const c=S.consentimento||{};
   <label class="chk"><input type="checkbox" id="cSaude">Autorizo o uso dos meus dados de saúde para o funcionamento do app.</label>
   <label class="chk"><input type="checkbox" id="cIA" ${c.ia?'checked':''}><span>Opcional: autorizo enviar fotos das minhas refeições para análise por inteligência artificial (Anthropic, nos EUA). <span class="mut">Pode mudar depois na aba Evolução.</span></span></label>
   <div id="err" style="color:var(--warn);font-size:13px;margin:8px 0"></div>
+  <div class="mut" style="margin:8px 0;padding:8px;border:1px solid var(--ln);border-radius:8px">⚕️ ${AVISO_SAUDE}</div>
   <button id="cOk" style="width:100%">Continuar</button></div>
   ${SES?'<button class="x" id="cSair">Não concordo, sair</button>':''}`;
  $('#cOk').onclick=()=>{if(!$('#cPol').checked||!$('#cSaude').checked)return $('#err').textContent='Para usar o app, marque as duas primeiras opções.';
@@ -367,6 +371,28 @@ function bindPrivacidade(){
    catch(e){b.disabled=false;b.textContent='Excluir minha conta e todos os dados';return alert('Não foi possível excluir agora: '+e.message+'\nNada foi apagado. Tente de novo com internet.')}}
   try{Object.keys(localStorage).filter(k=>k.startsWith(KEY)).forEach(k=>localStorage.removeItem(k))}catch(e){}
   SES=null;S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';alert('Seus dados foram excluídos.');render()}}
+
+// ---- alergias e restrições ----
+// Aviso por palavras no nome do alimento. É um alerta de apoio: não identifica tudo (ex.: traços, ingredientes de pratos prontos).
+const ALERGIAS={
+ lactose:['Leite / lactose',['leite','queijo','iogurte','requeijao','manteiga','creme de leite','nata','coalhada','whey','caseina','doce de leite','chantilly','sorvete','catupiry','ricota','mussarela','muçarela','parmesao','pudim','estrogonofe','lasanha','pizza']],
+ gluten:['Glúten',['trigo','pao','macarrao','massa','farinha de trigo','biscoito','bolacha','bolo','pizza','cevada','centeio','malte','cerveja','torrada','lasanha','empada','pastel','coxinha','esfirra','croissant','cuscuz marroquino','nhoque','panqueca','seitan']],
+ amendoim:['Amendoim',['amendoim','pacoca']],
+ castanhas:['Castanhas e nozes',['castanha','noz','nozes','amendoa','avela','pistache','macadamia','pecan']],
+ ovo:['Ovo',['ovo','ovos','maionese','albumina','omelete','gemada','quindim','pudim','suspiro','merengue']],
+ peixe:['Peixe',['peixe','atum','sardinha','tilapia','salmao','bacalhau','merluza','pescada','truta','anchova']],
+ frutosmar:['Frutos do mar',['camarao','lula','polvo','marisco','mexilhao','ostra','siri','caranguejo','lagosta','vatapa','moqueca']],
+ soja:['Soja',['soja','tofu','shoyu','missô','misso','edamame']]};
+function alergiasDe(nome){const a=(S.perfil&&S.perfil.alergias)||{},n=' '+semAcento(nome).replace(/[^a-z0-9]+/g,' ')+' ',achou=[];
+ (a.lista||[]).forEach(k=>{const def=ALERGIAS[k];if(def&&def[1].some(w=>n.includes(' '+semAcento(w)+' ')||n.includes(' '+semAcento(w)+'s ')))achou.push(def[0])});
+ String(a.outras||'').split(/[,;\n]+/).map(x=>semAcento(x).trim()).filter(x=>x.length>=3).forEach(w=>{if(n.includes(' '+w))achou.push(w)});
+ return achou}
+const tagAlergia=nome=>{const a=alergiasDe(nome);return a.length?` <span style="color:var(--warn);font-weight:600">⚠ ${esc(a.join(', '))}</span>`:''};
+function camposAlergias(a){a=a||{};return`<div class="mut" style="margin:4px 0">Alergias e restrições (o app avisa quando um alimento puder conter):</div>
+ <div style="display:flex;flex-wrap:wrap;gap:4px 12px">${Object.entries(ALERGIAS).map(([k,[n]])=>`<label class="chk" style="margin:0"><input type="checkbox" data-al="${k}" ${(a.lista||[]).includes(k)?'checked':''}>${n}</label>`).join('')}</div>
+ <label>Outras (separe por vírgula)<input id="alOutras" value="${esc(a.outras||'')}" placeholder="ex.: morango, corante"></label>`}
+const leAlergias=()=>({lista:[...document.querySelectorAll('[data-al]')].filter(c=>c.checked).map(c=>c.dataset.al),outras:($('#alOutras')||{}).value||''});
+const AVISO_SAUDE='Os valores e sugestões do app são estimativas para apoio. O app não substitui nutricionista, médico ou outro profissional de saúde.';
 
 // ---- medidas corporais ----
 const MEDIDAS=[['cintura','Cintura','cm'],['quadril','Quadril','cm'],['abdomen','Abdômen','cm'],['peito','Peito','cm'],['braco','Braço','cm'],['coxa','Coxa','cm'],['gordura','Gordura corporal','%']];
@@ -481,7 +507,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261016-112230';let versaoNova=null;
+const VERSAO='20261016-114417';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -554,7 +580,7 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.consentimento||S.co
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();bindPrivacidade();bindMedidas();bindMeus();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]()+`<div class="mut" style="text-align:center;margin:16px 8px 0">⚕️ ${AVISO_SAUDE}</div>`;bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();bindPrivacidade();bindMedidas();bindMeus();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 
 // ---- registro por foto (IA) ----
@@ -585,7 +611,7 @@ function cardFoto(){if(!FOTO)return'';
  return`<div class="card" id="cardFoto"><div class="row" style="border:0;padding:0"><h2 style="margin:0">📷 Confira antes de salvar</h2><button class="x" id="fotoCancela">✕</button></div>
   <img src="data:image/jpeg;base64,${FOTO.mini}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin:8px 0" alt="">
   ${FOTO.erro?`<div style="color:var(--warn);margin-bottom:8px">${esc(FOTO.erro)}</div>`:''}
-  ${it.map((x,i)=>`<div style="border-bottom:1px solid var(--ln);padding:8px 0"><div class="mut">IA: ${esc(x.nome)}${x.confianca==='baixa'?' · ⚠ pouca certeza':''}</div>
+  ${it.map((x,i)=>`<div style="border-bottom:1px solid var(--ln);padding:8px 0"><div class="mut">IA: ${esc(x.nome)}${x.confianca==='baixa'?' · ⚠ pouca certeza':''}${tagAlergia(x.nome+' '+(TACO[x.escolha]||[''])[0])}</div>
    <div style="display:flex;gap:6px;margin-top:4px"><select data-fe="${i}" style="flex:1;margin:0">${x.cands.map(c=>`<option value="${c}" ${c===x.escolha?'selected':''}>${esc(TACO[c][0])}</option>`).join('')||'<option value="">Não achei na base</option>'}</select>
    <input type="number" data-fg="${i}" value="${x.gramas}" style="width:72px;margin:0"><span style="align-self:center">g</span><button class="x" data-fx="${i}">✕</button></div>
    ${x.escolha!=null&&TACO[x.escolha]?`<div class="mut">${f(TACO[x.escolha][1]*x.gramas/100)} kcal</div>`:''}</div>`).join('')}
@@ -593,7 +619,7 @@ function cardFoto(){if(!FOTO)return'';
   ${it.length?`<div style="margin:8px 0"><b>Total: ${f(tot)} kcal</b></div>`:''}
   <div class="grid">${it.length?`<button id="fotoSalva">Salvar em ${esc(tipoSel||tipoAuto())}</button>`:''}
    ${FOTO.modo!=='melhor'?`<button class="ghost" id="fotoMelhor">🔍 Analisar melhor</button>`:''}</div>
-  <div class="mut" style="margin-top:6px">As gramas são estimativas: ajuste se precisar.${FOTO.restantes!=null?` · ${FOTO.restantes} análises restantes hoje`:''}</div></div>`}
+  <div class="mut" style="margin-top:6px">As gramas são estimativas: ajuste se precisar. O app não substitui nutricionista ou médico.${FOTO.restantes!=null?` · ${FOTO.restantes} análises restantes hoje`:''}</div></div>`}
 function bindFoto(){
  if($('#fotoInput'))$('#fotoInput').onchange=async e=>{const arq=e.target.files[0];if(!arq)return;
   try{FOTO={img:await reduz(arq,1024,.85),mini:await reduz(arq,360,.6),itens:[]};analisaFoto('rapido')}catch(x){alert(x.message)}};
@@ -661,7 +687,7 @@ function bind(){
  if($('#busca'))$('#busca').oninput=e=>{const termos=semAcento(e.target.value).split(/\s+/).filter(Boolean);
   if(termos.join('').length<2){$('#res').innerHTML='';return}
   const ach=buscaAlim(e.target.value);
-  $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[5]?`${f(t[1]*t[5]/100)} kcal · P ${f(t[2]*t[5]/100)} · C ${f(t[3]*t[5]/100)} · G ${f(t[4]*t[5]/100)} g por ${t[5]} g`:`${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g`}</span></span><span style="display:flex;gap:6px"><input type="number" value="${t[5]||100}" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
+  $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}${tagAlergia(t[0])}<br><span class="mut">${t[5]?`${f(t[1]*t[5]/100)} kcal · P ${f(t[2]*t[5]/100)} · C ${f(t[3]*t[5]/100)} · G ${f(t[4]*t[5]/100)} g por ${t[5]} g`:`${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g`}</span></span><span style="display:flex;gap:6px"><input type="number" value="${t[5]||100}" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
   ||'<div class="mut">Não encontrado.</div>';
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addAlimento(TACO[b.dataset.add],document.querySelector(`[data-g="${b.dataset.add}"]`).value));
   // Enter no campo de gramas registra; o valor mostrado acompanha as gramas digitadas
@@ -678,6 +704,7 @@ function bind(){
  document.querySelectorAll('[data-pl]').forEach(s=>s.onchange=()=>{S.plano[s.dataset.pl]=s.value;save()});
  if($('#addP'))$('#addP').onclick=()=>{const kg=+$('#kg').value;S.pesos=S.pesos.filter(p=>p.d!==hoje());S.pesos.push({d:hoje(),kg});save();render()};
  if($('#trocaPlano'))$('#trocaPlano').onchange=e=>{S.perfil.plano=e.target.value;save()};
+ if($('#alSalva'))$('#alSalva').onclick=()=>{S.perfil.alergias=leAlergias();save();render();alert('Alergias salvas.')};
  if($('#reset'))$('#reset').onclick=async()=>{
   if(!confirm('Apagar TODOS os seus dados (refeições, treinos, pesos, cardápio)?'+(SES?' Isso apaga também da sua conta.':'')))return;
   if(prompt('Para confirmar, digite APAGAR')!=='APAGAR')return alert('Nada foi apagado.');

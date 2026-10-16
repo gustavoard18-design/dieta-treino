@@ -149,6 +149,8 @@ Coletar só o necessário, pedir consentimento claro, publicar política de priv
 - **Exportação**: "Baixar cópia" em Cópias de segurança.
 - **Retenção**: cópias automáticas por 60 dias; miniaturas do teste de fotos apagadas após 30 dias (`pg_cron`).
 - Se a política mudar, o app pede consentimento de novo.
+- **Alergias e restrições** (opcional, 16/10/2026): lactose, glúten, amendoim, castanhas, ovo, peixe, frutos do mar, soja e outras em texto livre; o app avisa na busca, pede confirmação antes de registrar e marca na análise por foto e nas refeições. É um alerta de apoio por palavras no nome do alimento, não identifica traços nem ingredientes de industrializados.
+- **Aviso de saúde** no consentimento, no rodapé de todas as telas, na análise por foto e na política: os valores são estimativas e o app não substitui nutricionista, médico ou outro profissional de saúde.
 
 ### Pendências do cliente
 - ⚠️ Preencher na política **o nome do controlador e o e-mail de contato** (hoje há marcadores `[NOME DO RESPONSÁVEL PELO APP]` e `[E-MAIL DE CONTATO]`).
