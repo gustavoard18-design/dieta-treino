@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261015-175635"></script>
+<script src="alimentos.js?v=20261016-110129"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -74,7 +74,7 @@ function junta(a,b){if(!a||!a.perfil)return b;if(!b||!b.perfil)return a;
  r.apagados={...(velho.apagados||{}),...(novo.apagados||{})};
  const uniao=(k,id)=>{const m=new Map();[...(velho[k]||[]),...(novo[k]||[])].forEach(x=>{if(!r.apagados[String(x.id)])m.set(id(x),x)});return[...m.values()]};
  r.refeicoes=uniao('refeicoes',x=>x.id);r.treinos=uniao('treinos',x=>x.id);r.jejuns=uniao('jejuns',x=>x.ini);
- r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);
+ r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);r.medidas=uniao('medidas',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);
  r.agua={...velho.agua};Object.entries(novo.agua||{}).forEach(([d,v])=>r.agua[d]=Math.max(v,r.agua[d]||0));
  r.checks={...velho.checks};Object.entries(novo.checks||{}).forEach(([d,c])=>r.checks[d]={...(r.checks[d]||{}),...c});
  ['cardapio','plano','compras'].forEach(k=>{if(!Object.keys(novo[k]||{}).length)r[k]=velho[k]});
@@ -212,8 +212,8 @@ function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoA
  return `<h1>Alimentação</h1><div class="card"><h2>Registrar refeição</h2>
  <label>Refeição<select id="tipo">${TIPOS.map(t=>`<option ${t===tipo?'selected':''}>${t}</option>`).join('')}</select></label>
  <label>Buscar alimento (${TACO.length.toLocaleString('pt-BR')} na base TACO/IBGE)<input id="busca" placeholder="ex.: arroz cozido, frango grelhado" autocomplete="off"></label><div id="res"></div>
- ${SES&&fotoLiberada?`<label class="ghost" style="display:block;margin:8px 0 0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">📷 Registrar por foto${modoTeste()?' (teste)':''}<input type="file" id="fotoInput" accept="image/*" capture="environment" style="display:none"></label>`
-  :SES?'':`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
+ ${SES&&fotoLiberada&&aceitaIA()?`<label class="ghost" style="display:block;margin:8px 0 0;text-align:center;border:1px solid var(--ac);color:var(--ac);border-radius:8px;padding:10px;font-weight:600;cursor:pointer">📷 Registrar por foto${modoTeste()?' (teste)':''}<input type="file" id="fotoInput" accept="image/*" capture="environment" style="display:none"></label>`
+  :SES&&fotoLiberada?`<div class="mut" style="margin-top:8px">📷 Registro por foto desativado: autorize a análise por IA em Evolução → Privacidade.</div>`:SES?'':`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
  ${cardFoto()}
  ${favoritos()}
  <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
@@ -276,6 +276,7 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  if(a&&a.perdaSem>0.05&&p.obj==='perder'){const sem=(atual-p.pmeta)/a.perdaSem,dt=new Date();dt.setDate(dt.getDate()+sem*7);prev=`Meta de ${p.pmeta} kg por volta de <b>${dt.toLocaleDateString('pt-BR')}</b> (${a.perdaSem.toFixed(2)} kg/semana).`}
  return `<h1>Evolução</h1><div class="card"><h2>Registrar peso</h2><div class="grid"><input id="kg" type="number" step="0.1" value="${pesoAtual()}"><button id="addP">Salvar</button></div></div>
  <div class="card"><h2>Peso e tendência</h2>${grafico(tr)}<div class="mut">Pontos: pesagens · Linha: tendência suavizada · Atual ${atual.toFixed(1)} kg</div></div>
+ ${cardMedidas()}
  <div class="card"><h2>Meta de calorias</h2><div class="big">${f(meta())} kcal</div><div class="mut">${a?`Ajustada pelo gasto real estimado (${f(a.gasto)} kcal/dia).`:'Calculada por fórmula (Mifflin-St Jeor). Ajuste automático após 7+ dias de dados.'}</div></div>
  <div class="card"><h2>Previsão</h2>${prev}</div>
  <div class="card"><h2>Perfil</h2><label>Plano<select id="trocaPlano">${Object.entries(PLANOS).map(([k,v])=>`<option value="${k}" ${k===p.plano?'selected':''}>${v.n}</option>`).join('')}</select></label>
@@ -283,6 +284,7 @@ function evolucao(){const tr=tendencia(),a=ajusteSemanal(),p=S.perfil,atual=tr.l
  <div class="card"><h2>Conta</h2>${SES?`<div class="mut">${SES.user.email} · <span id="sync">${syncMsg}</span></div><button class="ghost" id="sair" style="margin-top:8px">Sair</button>`
  :`<div class="mut">Sem conta: dados só neste aparelho.</div><button class="ghost" id="logar" style="margin-top:8px">Entrar para sincronizar</button>`}</div>
  ${cardBackup()}
+ ${cardPrivacidade()}
  ${cardInstalar(true)}
  ${cardLembretes()}`}
 function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesagens.</div>';
@@ -291,8 +293,57 @@ function grafico(tr){if(tr.length<2)return'<div class="mut">Precisa de 2+ pesage
  return `<svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="var(--ac)" stroke-width="2.5" points="${tr.map((p,i)=>x(i)+','+y(p.t)).join(' ')}"/>
  ${tr.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.kg)}" r="3" fill="var(--mut)"/>`).join('')}</svg>`}
 
+// ---- LGPD: consentimento, privacidade e exclusão ----
+const VERSAO_POLITICA='2026-10-16';
+function consentimento(){$('#nav').innerHTML='';const c=S.consentimento||{};
+ $('#app').innerHTML=`<h1>Sua privacidade</h1><div class="card">
+  <div class="mut" style="margin-bottom:10px">Este app guarda dados de saúde (peso, medidas, alimentação e treinos). Pela LGPD, precisamos da sua autorização. Leia a <a href="privacidade.html" target="_blank" style="color:var(--ac)">Política de Privacidade</a>.</div>
+  <label class="chk"><input type="checkbox" id="cPol">Li e aceito a Política de Privacidade.</label>
+  <label class="chk"><input type="checkbox" id="cSaude">Autorizo o uso dos meus dados de saúde para o funcionamento do app.</label>
+  <label class="chk"><input type="checkbox" id="cIA" ${c.ia?'checked':''}><span>Opcional: autorizo enviar fotos das minhas refeições para análise por inteligência artificial (Anthropic, nos EUA). <span class="mut">Pode mudar depois na aba Evolução.</span></span></label>
+  <div id="err" style="color:var(--warn);font-size:13px;margin:8px 0"></div>
+  <button id="cOk" style="width:100%">Continuar</button></div>
+  ${SES?'<button class="x" id="cSair">Não concordo, sair</button>':''}`;
+ $('#cOk').onclick=()=>{if(!$('#cPol').checked||!$('#cSaude').checked)return $('#err').textContent='Para usar o app, marque as duas primeiras opções.';
+  S.consentimento={versao:VERSAO_POLITICA,em:new Date().toISOString(),saude:true,ia:$('#cIA').checked};save();render()};
+ if($('#cSair'))$('#cSair').onclick=()=>{salvaSes(null);try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
+const aceitaIA=()=>!!(S.consentimento&&S.consentimento.ia);
+function cardPrivacidade(){return`<div class="card"><h2>🔒 Privacidade</h2>
+ <div class="mut" style="margin-bottom:8px">Autorizado em ${S.consentimento?new Date(S.consentimento.em).toLocaleDateString('pt-BR'):'-'} · <a href="privacidade.html" target="_blank" style="color:var(--ac)">Política de Privacidade</a></div>
+ <label class="chk"><input type="checkbox" id="pIA" ${aceitaIA()?'checked':''}>Permitir análise de fotos por IA (Anthropic, EUA)</label>
+ <div class="mut" style="margin:6px 0 10px">Para levar seus dados com você, use "Baixar cópia" em Cópias de segurança.</div>
+ <button class="ghost" id="pExclui" style="border-color:var(--warn);color:var(--warn)">${SES?'Excluir minha conta e todos os dados':'Apagar todos os dados deste aparelho'}</button></div>`}
+function bindPrivacidade(){
+ if($('#pIA'))$('#pIA').onchange=e=>{S.consentimento={...S.consentimento,ia:e.target.checked,iaEm:new Date().toISOString()};save();render()};
+ if($('#pExclui'))$('#pExclui').onclick=async()=>{
+  if(!confirm(SES?'Excluir sua conta? Isso apaga para sempre seus dados, cópias de segurança e fotos guardadas no servidor, e não pode ser desfeito.':'Apagar todos os dados deste aparelho? Não pode ser desfeito.'))return;
+  if(prompt('Para confirmar, digite EXCLUIR')!=='EXCLUIR')return alert('Nada foi excluído.');
+  if(SES){const b=$('#pExclui');b.disabled=true;b.textContent='Excluindo…';
+   try{const r=await fetch(`${SB_URL}/functions/v1/exclui-conta`,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:'{}'});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.erro||'Falha ao excluir.')}
+   catch(e){b.disabled=false;b.textContent='Excluir minha conta e todos os dados';return alert('Não foi possível excluir agora: '+e.message+'\nNada foi apagado. Tente de novo com internet.')}}
+  try{Object.keys(localStorage).filter(k=>k.startsWith(KEY)).forEach(k=>localStorage.removeItem(k))}catch(e){}
+  SES=null;S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';alert('Seus dados foram excluídos.');render()}}
+
+// ---- medidas corporais ----
+const MEDIDAS=[['cintura','Cintura','cm'],['quadril','Quadril','cm'],['abdomen','Abdômen','cm'],['peito','Peito','cm'],['braco','Braço','cm'],['coxa','Coxa','cm'],['gordura','Gordura corporal','%']];
+let medidaVer='cintura';
+function cardMedidas(){const ms=S.medidas||[],ult=ms[ms.length-1]||{},hj=ms.find(m=>m.d===hoje())||{};
+ const serie=ms.filter(m=>m[medidaVer]!=null).map(m=>({d:m.d,v:m[medidaVer]})),info=MEDIDAS.find(x=>x[0]===medidaVer);
+ let graf='<div class="mut">Registre 2 ou mais vezes para ver o gráfico.</div>';
+ if(serie.length>=2){const W=600,H=160,vs=serie.map(p=>p.v),mn=Math.min(...vs)-1,mx=Math.max(...vs)+1,x=i=>20+i*(W-40)/(serie.length-1),y=v=>H-15-(v-mn)/(mx-mn)*(H-30);
+  graf=`<svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="var(--ac)" stroke-width="2.5" points="${serie.map((p,i)=>x(i)+','+y(p.v)).join(' ')}"/>${serie.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.v)}" r="3.5" fill="var(--ac)"/>`).join('')}</svg>
+   <div class="mut">${new Date(serie[0].d+'T12:00').toLocaleDateString('pt-BR')}: ${serie[0].v} ${info[2]} → ${new Date(serie[serie.length-1].d+'T12:00').toLocaleDateString('pt-BR')}: ${serie[serie.length-1].v} ${info[2]} (${(serie[serie.length-1].v-serie[0].v>0?'+':'')+(serie[serie.length-1].v-serie[0].v).toFixed(1)})</div>`}
+ return`<div class="card"><h2>📏 Medidas</h2><div class="grid">${MEDIDAS.map(([k,n,u])=>`<label>${n} (${u})<input type="number" step="0.1" data-md="${k}" value="${hj[k]??''}" placeholder="${ult[k]??''}"></label>`).join('')}</div>
+  <button id="mdSalva" style="width:100%">Salvar medidas de hoje</button>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 6px">${MEDIDAS.map(([k,n])=>`<button class="${k===medidaVer?'':'ghost'}" data-mv="${k}" style="padding:5px 9px;font-size:13px">${n}</button>`).join('')}</div>${graf}</div>`}
+function bindMedidas(){
+ document.querySelectorAll('[data-mv]').forEach(b=>b.onclick=()=>{medidaVer=b.dataset.mv;render()});
+ if($('#mdSalva'))$('#mdSalva').onclick=()=>{const m={d:hoje()};let n=0;document.querySelectorAll('[data-md]').forEach(i=>{const v=parseFloat(String(i.value).replace(',','.'));if(v>0){m[i.dataset.md]=v;n++}});
+  if(!n)return alert('Preencha pelo menos uma medida.');S.medidas=(S.medidas||[]).filter(x=>x.d!==m.d);S.medidas.push(m);S.medidas.sort((a,b)=>a.d<b.d?-1:1);save();render()}}
+
 // ---- v2: campos novos com padrão para contas antigas ----
-function normaliza(){S.cardapio=S.cardapio||{};S.compras=S.compras||{};S.jejuns=S.jejuns||[];if(S.jejum===undefined)S.jejum=null;
+function normaliza(){S.medidas=S.medidas||[];S.cardapio=S.cardapio||{};S.compras=S.compras||{};S.jejuns=S.jejuns||[];if(S.jejum===undefined)S.jejum=null;
  S.lembretes=S.lembretes||{agua:false,refeicoes:false,jejum:false}}
 
 // ---- jejum intermitente ----
@@ -387,7 +438,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261015-175635';let versaoNova=null;
+const VERSAO='20261016-110129';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -406,27 +457,61 @@ function notifica(titulo,corpo,tag){if(!podeNotificar())return;const o={body:cor
  try{swReg?swReg.showNotification(titulo,o):new Notification(titulo,o)}catch(e){}}
 let avisados={};try{avisados=JSON.parse(localStorage.getItem(KEY+'-avisos'))||{}}catch(e){}
 function avisaUmaVez(chave,...a){if(avisados[chave])return;avisados[chave]=1;try{localStorage.setItem(KEY+'-avisos',JSON.stringify(avisados))}catch(e){};notifica(...a)}
-const HORAS_REF={"Café da manhã":9,"Almoço":13,"Lanche":17,"Jantar":21};
-function verificaLembretes(){if(!S||!S.perfil||!S.lembretes)return;const L=S.lembretes,agora=new Date(),h=agora.getHours(),d=hoje();
- if(L.agua&&h>=9&&h<=21&&h%2===1){const a=S.agua[d]||0,m=Math.round(pesoAtual()*35),esperado=m*(h-7)/15;
-  if(a<esperado)avisaUmaVez(`agua-${d}-${h}`,'💧 Hora de beber água',`Você está em ${f(a)} de ${f(m)} ml hoje.`,'agua')}
- if(L.refeicoes)Object.entries(HORAS_REF).forEach(([r,hr])=>{if(h===hr&&!dia(d).r.some(x=>x.tipo===r))avisaUmaVez(`ref-${d}-${r}`,`🍽️ ${r}`,`Ainda não registrou o ${r.toLowerCase()} de hoje.`,'ref')});
+// Aviso local do fim do jejum (os demais lembretes agora são push, com horário escolhido)
+function verificaLembretes(){if(!S||!S.perfil||!S.lembretes)return;const L=S.lembretes;
  if(L.jejum&&S.jejum&&Date.now()>=S.jejum.ini+S.jejum.horas*36e5)avisaUmaVez(`jejum-${S.jejum.ini}`,'⏱️ Jejum concluído',`Você completou ${S.jejum.horas}h de jejum.`,'jejum')}
 setInterval(verificaLembretes,60000);
-function cardLembretes(){const L=S.lembretes,sup='Notification' in window;
- return`<div class="card"><h2>🔔 Lembretes</h2>${!sup?'<div class="mut">Este navegador não suporta notificações.</div>':`
-  ${[['agua','Beber água (a cada 2 h, se estiver abaixo do ritmo)'],['refeicoes','Refeição não registrada (9h, 13h, 17h, 21h)'],['jejum','Fim do jejum']].map(([k,t])=>`<label class="chk"><input type="checkbox" data-lb="${k}" ${L[k]?'checked':''}>${t}</label>`).join('')}
-  <div class="mut">${Notification.permission==='denied'?'⚠ Notificações bloqueadas nas configurações do navegador.':'Funcionam com o app aberto ou em segundo plano no aparelho.'}</div>`}</div>`}
-function bindLembretes(){document.querySelectorAll('[data-lb]').forEach(c=>c.onchange=async()=>{
- if(c.checked&&Notification.permission!=='granted'&&await Notification.requestPermission()!=='granted'){c.checked=false;return render()}
- S.lembretes[c.dataset.lb]=c.checked;save();if(c.checked)notifica('🔔 Lembretes ativados','Você vai receber avisos deste app.','teste')})}
+// Lembretes por push (ADR 0004): horários escolhidos pela pessoa, guardados na tabela lembretes do Supabase.
+// O servidor envia a notificação mesmo com o app fechado. No iPhone, só depois de adicionar o app à tela inicial.
+const TIPOS_LEMBRETE={treino:'🏋️ Treino',cafe:'🍳 Café da manhã',almoco:'🍽️ Almoço',lanche:'🍎 Lanche',jantar:'🍲 Jantar',agua:'💧 Água',peso:'⚖️ Pesagem',medidas:'📏 Medidas'};
+const DIAS_CURTOS=['D','S','T','Q','Q','S','S'];
+let LEMB=null,pushAtivo=null,lembErro='';
+const pushSuportado=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+async function apiLemb(metodo,qs,corpo){const r=await fetch(`${SB_URL}/rest/v1/${qs}`,{method:metodo,headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),
+ 'Content-Type':'application/json',Prefer:'return=representation,resolution=merge-duplicates'},body:corpo&&JSON.stringify(corpo)});
+ if(!r.ok)throw new Error('Falha '+r.status);return r.status===204?null:r.json()}
+async function carregaLembretes(){if(!SES)return;try{LEMB=await apiLemb('GET','lembretes?select=*&order=hora');
+ const reg=await navigator.serviceWorker?.getRegistration();pushAtivo=!!(reg&&await reg.pushManager?.getSubscription()&&Notification.permission==='granted');lembErro=''}
+ catch(e){lembErro='Sem conexão para carregar os lembretes.'}render()}
+async function ativaPush(){try{if(await Notification.requestPermission()!=='granted')throw new Error('Permissão de notificação negada. Libere nas configurações do celular.');
+ const reg=await navigator.serviceWorker.ready,{chave}=await (await fetch(`${SB_URL}/functions/v1/lembretes-push`,{headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}})).json();
+ const b=atob(chave.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-chave.length%4)%4)),k=Uint8Array.from(b,c=>c.charCodeAt(0));
+ const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:k}),j=sub.toJSON();
+ await apiLemb('POST','push_inscricoes?on_conflict=endpoint',{endpoint:j.endpoint,user_id:SES.user.id,p256dh:j.keys.p256dh,auth:j.keys.auth});
+ await fetch(`${SB_URL}/functions/v1/lembretes-push`,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:'{"acao":"teste"}'});
+ pushAtivo=true;lembErro=''}catch(e){lembErro=e.message}render()}
+function cardLembretes(){const jejumLocal=`<label class="chk"><input type="checkbox" data-lb="jejum" ${S.lembretes.jejum?'checked':''}>Avisar no fim do jejum (com o app aberto ou em segundo plano)</label>`;
+ if(!SES)return`<div class="card"><h2>🔔 Lembretes</h2><div class="mut" style="margin-bottom:6px">Lembretes com horário escolhido precisam de conta.</div>${jejumLocal}</div>`;
+ if(LEMB===null&&!lembErro){carregaLembretes();return`<div class="card"><h2>🔔 Lembretes</h2><div class="mut">Carregando…</div></div>`}
+ const ios=ehIOS()&&!instalado();
+ return`<div class="card"><h2>🔔 Lembretes</h2>
+ ${!pushSuportado()||ios?`<div class="mut" style="margin-bottom:8px">${ios?'No iPhone, os lembretes só chegam pelo app instalado: adicione à tela inicial e abra pelo ícone.':'Este navegador não recebe notificações push.'}</div>`
+  :pushAtivo?`<div class="mut" style="margin-bottom:8px">✅ Notificações ativas neste aparelho.</div>`
+  :`<button id="lbAtiva" style="width:100%;margin-bottom:8px">Ativar notificações neste aparelho</button>`}
+ ${lembErro?`<div style="color:var(--warn);font-size:13px;margin-bottom:8px">${esc(lembErro)}</div>`:''}
+ ${(LEMB||[]).map(l=>`<div class="row"><span><b>${String(l.hora).slice(0,5)}</b> ${TIPOS_LEMBRETE[l.tipo]||l.tipo}<br><span class="mut">${l.dias.length===7?'Todos os dias':DIAS_CURTOS.map((d,i)=>l.dias.includes(i)?d:'·').join(' ')}</span></span>
+  <span style="white-space:nowrap"><input type="checkbox" data-la="${l.id}" ${l.ativo?'checked':''} title="Ativo" style="width:auto"><button class="x" data-lx="${l.id}">✕</button></span></div>`).join('')||'<div class="mut">Nenhum lembrete ainda.</div>'}
+ <div style="margin-top:10px"><div class="grid"><select id="lbTipo">${Object.entries(TIPOS_LEMBRETE).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><input type="time" id="lbHora" value="08:00"></div>
+  <div style="display:flex;gap:4px;margin:6px 0">${DIAS_CURTOS.map((d,i)=>`<label style="flex:1;text-align:center;margin:0"><input type="checkbox" data-ld="${i}" checked style="width:auto;margin:0"><br>${d}</label>`).join('')}</div>
+  <button class="ghost" id="lbAdd" style="width:100%">+ Adicionar lembrete</button></div>
+ <div style="margin-top:10px">${jejumLocal}</div></div>`}
+function bindLembretes(){
+ document.querySelectorAll('[data-lb]').forEach(c=>c.onchange=async()=>{
+  if(c.checked&&Notification.permission!=='granted'&&await Notification.requestPermission()!=='granted'){c.checked=false;return render()}
+  S.lembretes[c.dataset.lb]=c.checked;save()});
+ if($('#lbAtiva'))$('#lbAtiva').onclick=ativaPush;
+ if($('#lbAdd'))$('#lbAdd').onclick=async()=>{const dias=[...document.querySelectorAll('[data-ld]')].filter(c=>c.checked).map(c=>+c.dataset.ld);
+  if(!dias.length)return alert('Escolha pelo menos um dia.');
+  try{await apiLemb('POST','lembretes',{user_id:SES.user.id,tipo:$('#lbTipo').value,hora:$('#lbHora').value,dias});LEMB=null;carregaLembretes()}catch(e){alert('Não foi possível salvar. Verifique a internet.')}};
+ document.querySelectorAll('[data-la]').forEach(c=>c.onchange=async()=>{try{await apiLemb('PATCH',`lembretes?id=eq.${c.dataset.la}`,{ativo:c.checked})}catch(e){alert('Não foi possível salvar.')}});
+ document.querySelectorAll('[data-lx]').forEach(b=>b.onclick=async()=>{try{await apiLemb('DELETE',`lembretes?id=eq.${b.dataset.lx}`);LEMB=null;carregaLembretes()}catch(e){alert('Não foi possível apagar.')}})}
 
 const ABAS={painel:['🏠','Hoje',painel],alimentacao:['🍽️','Comida',alimentacao],cardapio:['📋','Cardápio',cardapio],treinos:['🏋️','Treinos',treinos],evolucao:['📈','Evolução',evolucao]};
-function render(){if(!SES&&!modoLocal())return login();if(!S.perfil)return cadastro();normaliza();
+function render(){if(!SES&&!modoLocal())return login();if(!S.consentimento||S.consentimento.versao!==VERSAO_POLITICA)return consentimento();if(!S.perfil)return cadastro();normaliza();
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();bindPrivacidade();bindMedidas();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 
 // ---- registro por foto (IA) ----
@@ -561,7 +646,7 @@ function bind(){
   const b=$('#sair');b.disabled=true;b.textContent='Salvando na conta…';
   try{await empurra();pendente=false}catch(e){b.disabled=false;b.textContent='Sair';
    return alert('Não foi possível enviar seus últimos registros para a conta (sem internet ou sessão vencida). Conecte-se e tente sair de novo. Nada foi apagado.')}
-  salvaSes(null);fotoLiberada=false;fotoChecada=null;try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
+  salvaSes(null);fotoLiberada=false;fotoChecada=null;LEMB=null;pushAtivo=null;try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+'-local')}catch(e){}
   S={perfil:null,refeicoes:[],treinos:[],pesos:[],checks:{},agua:{},plano:{}};aba='painel';render()};
  if($('#logar'))$('#logar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()};
 }
