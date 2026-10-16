@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261016-112018"></script>
+<script src="alimentos.js?v=20261016-112230"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -74,7 +74,7 @@ function junta(a,b){if(!a||!a.perfil)return b;if(!b||!b.perfil)return a;
  r.apagados={...(velho.apagados||{}),...(novo.apagados||{})};
  const uniao=(k,id)=>{const m=new Map();[...(velho[k]||[]),...(novo[k]||[])].forEach(x=>{if(!r.apagados[String(x.id)])m.set(id(x),x)});return[...m.values()]};
  r.refeicoes=uniao('refeicoes',x=>x.id);r.treinos=uniao('treinos',x=>x.id);r.jejuns=uniao('jejuns',x=>x.ini);
- r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);r.medidas=uniao('medidas',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);
+ r.pesos=uniao('pesos',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);r.medidas=uniao('medidas',x=>x.d).sort((x,y)=>x.d<y.d?-1:1);r.meusAlimentos=uniao('meusAlimentos',x=>x.id).sort((a,b)=>a.nome.localeCompare(b.nome));
  r.agua={...velho.agua};Object.entries(novo.agua||{}).forEach(([d,v])=>r.agua[d]=Math.max(v,r.agua[d]||0));
  r.checks={...velho.checks};Object.entries(novo.checks||{}).forEach(([d,c])=>r.checks[d]={...(r.checks[d]||{}),...c});
  ['cardapio','plano','compras'].forEach(k=>{if(!Object.keys(novo[k]||{}).length)r[k]=velho[k]});
@@ -216,6 +216,7 @@ function alimentacao(){const d=dia(hoje()),mc=macros(hoje()),tipo=tipoSel||tipoA
   :SES&&fotoLiberada?`<div class="mut" style="margin-top:8px">📷 Registro por foto desativado: autorize a análise por IA em Evolução → Privacidade.</div>`:SES?'':`<div class="mut" style="margin-top:8px">📷 Registro por foto: entre na sua conta para usar.</div>`}</div>
  ${cardFoto()}
  ${favoritos()}
+ ${cardMeus()}
  <div class="card"><h2>Hoje</h2><div class="grid">${linha('Calorias kcal',d.kcal,mc.kcal)}${linha('Proteína g',d.prot,mc.prot)}${linha('Carboidrato g',d.carb,mc.carb)}${linha('Gordura g',d.gord,mc.gord)}</div></div>
  ${grupos.map(([t,rs])=>{const s=k=>rs.reduce((a,r)=>a+(r[k]||0),0);
   return `<div class="card"><div class="row"><h2 style="margin:0">${t}</h2><b>${f(s('kcal'))} kcal</b></div><div class="mut" style="margin-bottom:4px">${pcg(s('prot'),s('carb'),s('gord'))}</div>
@@ -250,6 +251,41 @@ function distancia(a,b,max){if(Math.abs(a.length-b.length)>max)return max+1;let 
   if(pp&&i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])v=Math.min(v,pp[j-2]+1);c[j]=v;if(v<menor)menor=v}if(menor>max)return max+1;pp=p;p=c}return p[b.length]}
 const PALAVRAS=BUSCA.map(n=>n.split(/[^a-z0-9]+/).filter(Boolean));
 const PALAVRAS_F=PALAVRAS.map(ws=>ws.map(fonetica));
+
+// ---- meus alimentos (produtos de marca e receitas cadastrados pela pessoa) ----
+// Guardados por porção, como no rótulo; entram no fim de TACO como [nome, kcal, P, C, G por 100 g, porção, id].
+const BASE_N=TACO.length;let assinaturaMeus='';
+function recarregaMeus(){const ms=(S&&S.meusAlimentos)||[],ass=JSON.stringify(ms);if(ass===assinaturaMeus)return;assinaturaMeus=ass;
+ [TACO,BUSCA,PALAVRAS,PALAVRAS_F].forEach(a=>a.length=BASE_N);
+ ms.forEach(m=>{const k=100/m.porcao,nome='⭐ '+m.nome;TACO.push([nome,+(m.kcal*k).toFixed(1),+(m.p*k).toFixed(1),+(m.c*k).toFixed(1),+(m.g*k).toFixed(1),m.porcao,m.id]);
+  const b=semAcento(nome),ws=b.split(/[^a-z0-9]+/).filter(Boolean);BUSCA.push(b);PALAVRAS.push(ws);PALAVRAS_F.push(ws.map(fonetica))})}
+let meuEdit=null; // null = fechado; {} = novo; {id,...} = editando
+function cardMeus(){const ms=S.meusAlimentos||[];
+ if(!meuEdit)return`<div class="card"><div class="row" style="border:0;padding:0"><h2 style="margin:0">⭐ Meus alimentos</h2><button class="ghost" id="meuNovo" style="padding:6px 10px">+ Cadastrar</button></div>
+  ${ms.length?ms.map(m=>`<div class="row"><span>${esc(m.nome)}<br><span class="mut">${m.porcao} g · ${f(m.kcal)} kcal · ${pcg(m.p,m.c,m.g)}</span></span><span style="white-space:nowrap"><button class="x" data-me="${m.id}">✎</button><button class="x" data-mx="${m.id}">✕</button></span></div>`).join('')
+   :'<div class="mut" style="margin-top:6px">Cadastre produtos de marca (seu whey, iogurte, pão) ou receitas caseiras com os valores do rótulo. Eles aparecem na busca com ⭐.</div>'}</div>`;
+ const m=meuEdit,v=k=>m[k]??'';
+ return`<div class="card" id="meuForm"><h2>${m.id?'Editar':'Novo'} alimento</h2>
+  <label>Nome<input id="mNome" value="${esc(v('nome'))}" placeholder="ex.: Whey Growth baunilha"></label>
+  <label>Porção (g ou ml)<input id="mPorcao" type="text" inputmode="decimal" value="${v('porcao')||''}" placeholder="ex.: 30"></label>
+  <div class="mut" style="margin-bottom:6px">Valores da porção, como na tabela do rótulo:</div>
+  <div class="grid"><label>Calorias (kcal)<input id="mKcal" type="text" inputmode="decimal" value="${v('kcal')}"></label><label>Proteína (g)<input id="mP" type="text" inputmode="decimal" value="${v('p')}"></label>
+  <label>Carboidrato (g)<input id="mC" type="text" inputmode="decimal" value="${v('c')}"></label><label>Gordura (g)<input id="mG" type="text" inputmode="decimal" value="${v('g')}"></label></div>
+  <div id="mErr" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div>
+  <div class="grid"><button id="mSalva">Salvar</button><button class="ghost" id="mCancela">Cancelar</button></div></div>`}
+function bindMeus(){
+ if($('#meuNovo'))$('#meuNovo').onclick=()=>{meuEdit={};render();$('#mNome').focus()};
+ if($('#mCancela'))$('#mCancela').onclick=()=>{meuEdit=null;render()};
+ document.querySelectorAll('[data-me]').forEach(b=>b.onclick=()=>{meuEdit={...(S.meusAlimentos||[]).find(m=>String(m.id)===b.dataset.me)};render()});
+ document.querySelectorAll('[data-mx]').forEach(b=>b.onclick=()=>{const m=S.meusAlimentos.find(x=>String(x.id)===b.dataset.mx);
+  if(confirm(`Apagar "${m.nome}" dos seus alimentos? As refeições já registradas não mudam.`)){apaga('meusAlimentos',m.id);render()}});
+ if($('#mSalva'))$('#mSalva').onclick=()=>{const n=id=>parseFloat(String($(id).value).replace(',','.')),nome=$('#mNome').value.trim(),porcao=n('#mPorcao');
+  const kcal=n('#mKcal'),p=n('#mP')||0,c=n('#mC')||0,g=n('#mG')||0;
+  if(!nome)return $('#mErr').textContent='Dê um nome ao alimento.';if(!(porcao>0))return $('#mErr').textContent='Informe o tamanho da porção.';
+  if(!(kcal>=0))return $('#mErr').textContent='Informe as calorias da porção.';
+  const item={id:meuEdit.id||Date.now()+Math.random(),nome,porcao,kcal,p,c,g};
+  S.meusAlimentos=(S.meusAlimentos||[]).filter(x=>x.id!==item.id).concat(item).sort((a,b)=>a.nome.localeCompare(b.nome));
+  meuEdit=null;save();render()}}
 function notaTermo(t,tf,ws,wf,nome){let m=0;if(nome.includes(t))m=6;
  for(let k=0;k<ws.length&&m<10;k++){const w=ws[k];
   if(w===t)m=Math.max(m,10);else if(w.startsWith(t))m=Math.max(m,8);else if(t.length>=4&&t.startsWith(w)&&w.length>=4)m=Math.max(m,5);
@@ -341,7 +377,7 @@ function cardMedidas(){const ms=S.medidas||[],ult=ms[ms.length-1]||{},hj=ms.find
  if(serie.length>=2){const W=600,H=160,vs=serie.map(p=>p.v),mn=Math.min(...vs)-1,mx=Math.max(...vs)+1,x=i=>20+i*(W-40)/(serie.length-1),y=v=>H-15-(v-mn)/(mx-mn)*(H-30);
   graf=`<svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="var(--ac)" stroke-width="2.5" points="${serie.map((p,i)=>x(i)+','+y(p.v)).join(' ')}"/>${serie.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.v)}" r="3.5" fill="var(--ac)"/>`).join('')}</svg>
    <div class="mut">${new Date(serie[0].d+'T12:00').toLocaleDateString('pt-BR')}: ${serie[0].v} ${info[2]} → ${new Date(serie[serie.length-1].d+'T12:00').toLocaleDateString('pt-BR')}: ${serie[serie.length-1].v} ${info[2]} (${(serie[serie.length-1].v-serie[0].v>0?'+':'')+(serie[serie.length-1].v-serie[0].v).toFixed(1)})</div>`}
- return`<div class="card"><h2>📏 Medidas</h2><div class="grid">${MEDIDAS.map(([k,n,u])=>`<label>${n} (${u})<input type="number" step="0.1" data-md="${k}" value="${hj[k]??''}" placeholder="${ult[k]??''}"></label>`).join('')}</div>
+ return`<div class="card"><h2>📏 Medidas</h2><div class="grid">${MEDIDAS.map(([k,n,u])=>`<label>${n} (${u})<input type="text" inputmode="decimal" data-md="${k}" value="${hj[k]??''}" placeholder="${ult[k]??''}"></label>`).join('')}</div>
   <button id="mdSalva" style="width:100%">Salvar medidas de hoje</button>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 6px">${MEDIDAS.map(([k,n])=>`<button class="${k===medidaVer?'':'ghost'}" data-mv="${k}" style="padding:5px 9px;font-size:13px">${n}</button>`).join('')}</div>${graf}</div>`}
 function bindMedidas(){
@@ -350,7 +386,7 @@ function bindMedidas(){
   if(!n)return alert('Preencha pelo menos uma medida.');S.medidas=(S.medidas||[]).filter(x=>x.d!==m.d);S.medidas.push(m);S.medidas.sort((a,b)=>a.d<b.d?-1:1);save();render()}}
 
 // ---- v2: campos novos com padrão para contas antigas ----
-function normaliza(){S.medidas=S.medidas||[];S.cardapio=S.cardapio||{};S.compras=S.compras||{};S.jejuns=S.jejuns||[];if(S.jejum===undefined)S.jejum=null;
+function normaliza(){S.medidas=S.medidas||[];S.meusAlimentos=S.meusAlimentos||[];recarregaMeus();S.cardapio=S.cardapio||{};S.compras=S.compras||{};S.jejuns=S.jejuns||[];if(S.jejum===undefined)S.jejum=null;
  S.lembretes=S.lembretes||{agua:false,refeicoes:false,jejum:false}}
 
 // ---- jejum intermitente ----
@@ -445,7 +481,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261016-112018';let versaoNova=null;
+const VERSAO='20261016-112230';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
@@ -518,7 +554,7 @@ function render(){if(!SES&&!modoLocal())return login();if(!S.consentimento||S.co
  $('#nav').innerHTML=Object.entries(ABAS).map(([k,[i,n]])=>`<button class="${k===aba?'on':''}" data-aba="${k}">${i}<br>${n}</button>`).join('');
  $('#app').innerHTML=faixaVersao()+(SES?'':`<div class="card" style="border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--card))">
   <b style="color:var(--warn)">⚠ Seus dados estão só neste aparelho</b><div class="mut" style="margin:4px 0 8px">Você está usando sem conta. Se apagar o app ou limpar o navegador, tudo será perdido.</div>
-  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();bindPrivacidade();bindMedidas();
+  <button id="avisoEntrar">Entrar ou criar conta</button></div>`)+(aba==='evolucao'?'':cardInstalar(false))+ABAS[aba][2]();bind();bindInstalar();bindVersao();bindBackup();bindFoto();checaFotoLiberada();bindPrivacidade();bindMedidas();bindMeus();
  if($('#avisoEntrar'))$('#avisoEntrar').onclick=()=>{try{localStorage.removeItem(KEY+'-local')}catch(e){};render()}}
 
 // ---- registro por foto (IA) ----
@@ -625,7 +661,7 @@ function bind(){
  if($('#busca'))$('#busca').oninput=e=>{const termos=semAcento(e.target.value).split(/\s+/).filter(Boolean);
   if(termos.join('').length<2){$('#res').innerHTML='';return}
   const ach=buscaAlim(e.target.value);
-  $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g</span></span><span style="display:flex;gap:6px"><input type="number" value="100" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
+  $('#res').innerHTML=ach.map(i=>{const t=TACO[i];return`<div class="row"><span>${esc(t[0])}<br><span class="mut">${t[5]?`${f(t[1]*t[5]/100)} kcal · P ${f(t[2]*t[5]/100)} · C ${f(t[3]*t[5]/100)} · G ${f(t[4]*t[5]/100)} g por ${t[5]} g`:`${t[1]} kcal · P ${t[2]} · C ${t[3]} · G ${t[4]} g /100 g`}</span></span><span style="display:flex;gap:6px"><input type="number" value="${t[5]||100}" style="width:70px" data-g="${i}"><button data-add="${i}">+</button></span></div>`}).join('')
   ||'<div class="mut">Não encontrado.</div>';
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addAlimento(TACO[b.dataset.add],document.querySelector(`[data-g="${b.dataset.add}"]`).value));
   // Enter no campo de gramas registra; o valor mostrado acompanha as gramas digitadas
