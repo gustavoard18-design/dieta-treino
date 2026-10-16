@@ -36,7 +36,7 @@ nav button{flex:1;max-width:110px;background:none;color:var(--mut);border-radius
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
-<script src="alimentos.js?v=20261016-110129"></script>
+<script src="alimentos.js?v=20261016-112018"></script>
 <script>
 // ---- dados (protótipo: salvos no navegador; Supabase entra depois) ----
 const KEY='dieta-treino-v1';
@@ -232,6 +232,13 @@ function favoritos(){const cnt={},ult={};S.refeicoes.forEach(r=>{const k=r.nome+
  return `<div class="card"><h2>Favoritos</h2>${FAV.map((r,i)=>`<div class="row"><span>${esc(r.nome)}<br><span class="mut">${r.g} g · ${f(r.kcal)} kcal</span></span><button class="ghost" data-fav="${i}">Repetir</button></div>`).join('')}</div>`}
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
 const semAcento=t=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+// Suplementos não estão na TACO/IBGE: valores médios de rótulo por 100 g (variam por marca)
+TACO.push(["Whey protein concentrado (suplemento)",400,75,10,6],["Whey protein isolado (suplemento)",370,88,2,1],
+ ["Whey protein hidrolisado (suplemento)",370,85,4,1.5],["Caseína micelar (suplemento)",360,78,6,2],
+ ["Albumina, clara de ovo em pó (suplemento)",370,80,5,0.5],["Proteína vegetal em pó, ervilha/arroz (suplemento)",390,75,8,7],
+ ["Hipercalórico, massa (suplemento)",380,20,70,3],["Barra de proteína (suplemento)",360,30,40,10],
+ ["Maltodextrina (suplemento)",380,0,95,0],["Dextrose (suplemento)",380,0,95,0],["Creatina (suplemento)",0,0,0,0],
+ ["Colágeno hidrolisado em pó (suplemento)",360,90,0,0],["Pré-treino em pó (suplemento)",50,0,12,0]);
 const BUSCA=TACO.map(t=>semAcento(t[0]));
 // Até 50 índices de TACO que contêm todas as palavras; os que começam pela primeira palavra vêm antes
 // Busca tolerante: aceita erro de digitação e grafia parecida (frango/frago, feijão/fejao, brócolis/brocolis, chuchu/xuxu).
@@ -438,7 +445,7 @@ let swReg=null;if('serviceWorker' in navigator)navigator.serviceWorker.register(
 
 // ---- aviso de atualização ----
 // VERSAO e version.json são trocados juntos pelo publicar.sh; se o servidor tiver outra versão, mostra a faixa "Atualizar".
-const VERSAO='20261016-110129';let versaoNova=null;
+const VERSAO='20261016-112018';let versaoNova=null;
 async function checaVersao(){try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
  const v=(await r.json()).versao;if(v&&v!==VERSAO&&v!==versaoNova){versaoNova=v;if(S&&S.perfil)render();else mostraFaixaVersao()}}catch(e){}}
 function faixaVersao(){return versaoNova?`<div class="card" style="border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))">
